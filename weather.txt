@@ -1,0 +1,11 @@
+Code	    Description	            Icon Day	    Icon Night	    BackGround Day	BackGround Night
+0, 1	    Clear sky	            sun-white	    moon-white	    clear_day	    clear_night
+2, 3	    Cloudy, and overcast	day_cloud	    night_cloud	    cloud_day	    cloud_night
+45 - 48	    Fog	                    day_fog	        night_fog	    cloud_day	    cloud_night
+71 - 77	    Snow	                day_snow	    night_snow	    snow_day	    snow_night
+85 - 86     Snow showers            day_snow	    night_snow	    snow_day	    snow_night
+51 - 57	    Drizzle	                day_rain	    night_rain	    rain_day	    rain_night
+61, 66, 80	Rain: Light	            day_rain	    night_rain	    rain_day	    rain_night
+63 - 81	    Rain: moderate	        day_rain	    night_rain	    rain_day	    rain_night
+65, 67, 82	Rain: heavy	            day_rain	    night_rain	    rain_day	    rain_night
+95 - 99	    Thunderstorm	        thunder_storm	thunder_storm	thunderstorm	thunderstorm
