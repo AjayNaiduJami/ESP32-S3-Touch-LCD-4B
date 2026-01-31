@@ -14,6 +14,10 @@
 #include "SensorQMI8658.hpp"
 #include <Preferences.h>
 
+#include "ui.h"
+#include <esp_partition.h>
+#include <esp_ota_ops.h>
+
 /* ================= CONFIG ================= */
 
 #define SWITCH_COUNT 9
@@ -60,7 +64,6 @@ lv_obj_t *status_batt_icon = NULL;
 lv_obj_t *screen_home;
 lv_obj_t *screen_notifications;
 lv_obj_t *screen_power;
-lv_obj_t *sleep_overlay;
 lv_obj_t *screen_settings_menu; 
 lv_obj_t *screen_about;
 lv_obj_t *screen_wifi;
@@ -85,10 +88,15 @@ int weather_code = 0;
 int is_day = 1;
 bool initial_weather_fetched = false;
 bool trigger_weather_update = false;
-lv_obj_t *celestial_body = NULL;
-lv_obj_t *celestial_glow = NULL;
-lv_anim_t anim_breathe;
-lv_style_t style_weather_bg;
+
+typedef enum {
+    WEATHER_CLEAR = 0,
+    WEATHER_CLOUDS,
+    WEATHER_RAIN,
+    WEATHER_SNOW,
+    WEATHER_FOG,
+    WEATHER_THUNDER
+} weather_type_t;
 
 // UI Handles
 lv_obj_t *clock_label;
@@ -96,11 +104,6 @@ lv_obj_t *power_info_label;
 lv_obj_t *notification_list; 
 lv_obj_t *no_notification_label;
 lv_obj_t *btn_clear_all; 
-lv_obj_t *sleep_time_lbl;
-lv_obj_t *sleep_date_lbl;
-lv_obj_t *sleep_status_lbl;
-lv_obj_t *sleep_weather_lbl;
-lv_obj_t *sleep_notify_badge;
 lv_obj_t *lbl_about_info = NULL;
 
 Preferences prefs;
@@ -188,6 +191,21 @@ const char* icons[SWITCH_COUNT] = {
   LV_SYMBOL_WARNING, LV_SYMBOL_WARNING, LV_SYMBOL_OK
 };
 
+weather_type_t get_weather_type(int wmo_code) {
+    switch(wmo_code) {
+        case 0: return WEATHER_CLEAR;
+        case 1: case 2: case 3: return WEATHER_CLOUDS;
+        case 45: case 48: return WEATHER_FOG;
+        case 51: case 53: case 55: case 56: case 57:
+        case 61: case 63: case 65: case 66: case 67:
+        case 80: case 81: case 82: return WEATHER_RAIN;
+        case 71: case 73: case 75: case 77:
+        case 85: case 86: return WEATHER_SNOW;
+        case 95: case 96: case 99: return WEATHER_THUNDER;
+        default: return WEATHER_CLOUDS;
+    }
+}
+
 /* ================= FORWARD DECLARATIONS ================= */
 void create_switch_grid(lv_obj_t *parent);
 void create_page_dots(lv_obj_t *parent, int active_idx);
@@ -198,7 +216,6 @@ void create_wifi_screen(lv_obj_t *parent);
 void create_ha_screen(lv_obj_t *parent);
 void create_about_screen(lv_obj_t *parent);
 void create_time_date_screen(lv_obj_t *parent);
-void create_sleep_screen();
 void show_notification_popup(const char* text, int index);
 void mqtt_callback(char* topic, byte* payload, unsigned int len);
 void update_about_text();
@@ -315,9 +332,9 @@ void add_notification(String msg) {
 
     notification_ui_dirty = true;
 
-    if (!lv_obj_has_flag(sleep_overlay, LV_OBJ_FLAG_HIDDEN)) {
+    if (!lv_obj_has_flag(ui_uiScreenSleep, LV_OBJ_FLAG_HIDDEN)) {
         ledcWrite(LCD_BL_PIN, 200); 
-        lv_obj_add_flag(sleep_overlay, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(ui_uiScreenSleep, LV_OBJ_FLAG_HIDDEN);
         last_touch_ms = millis();
     }
 }
@@ -1594,129 +1611,6 @@ void create_switch_grid(lv_obj_t *parent) {
   }
 }
 
-void anim_breathe_cb(void * var, int32_t v) {
-    lv_obj_set_style_transform_zoom((lv_obj_t*)var, v, 0);
-}
-
-void start_breathing_anim(lv_obj_t * obj) {
-    lv_anim_init(&anim_breathe);
-    lv_anim_set_var(&anim_breathe, obj);
-    lv_anim_set_values(&anim_breathe, 256, 280); // Zoom from 100% (256) to ~110% (280)
-    lv_anim_set_time(&anim_breathe, 3000);       // 3 seconds in
-    lv_anim_set_playback_time(&anim_breathe, 3000); // 3 seconds out
-    lv_anim_set_repeat_count(&anim_breathe, LV_ANIM_REPEAT_INFINITE);
-    lv_anim_set_path_cb(&anim_breathe, lv_anim_path_ease_in_out);
-    lv_anim_set_exec_cb(&anim_breathe, anim_breathe_cb);
-    lv_anim_start(&anim_breathe);
-}
-
-void create_sleep_screen() {
-    // 1. Initialize Style
-    lv_style_init(&style_weather_bg);
-    lv_style_set_bg_opa(&style_weather_bg, LV_OPA_COVER);
-    lv_style_set_bg_color(&style_weather_bg, lv_palette_darken(LV_PALETTE_BLUE_GREY, 4));
-    lv_style_set_bg_grad_color(&style_weather_bg, lv_color_black());
-    lv_style_set_bg_grad_dir(&style_weather_bg, LV_GRAD_DIR_VER);
-
-    // 2. Main Overlay
-    sleep_overlay = lv_obj_create(lv_layer_top());
-    lv_obj_set_size(sleep_overlay, 480, 480);
-    lv_obj_add_style(sleep_overlay, &style_weather_bg, 0); 
-    lv_obj_set_style_border_width(sleep_overlay, 0, 0);
-    lv_obj_set_style_radius(sleep_overlay, 0, 0);
-    lv_obj_clear_flag(sleep_overlay, LV_OBJ_FLAG_SCROLLABLE);
-
-    // --- CELESTIAL BODY (Static) ---
-    // We keep the object, but we DO NOT start the animation.
-    celestial_body = lv_obj_create(sleep_overlay);
-    lv_obj_set_size(celestial_body, 180, 180); 
-    lv_obj_align(celestial_body, LV_ALIGN_TOP_RIGHT, 40, -40);
-    lv_obj_set_style_radius(celestial_body, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_border_width(celestial_body, 0, 0);
-    // Simple static shadow is fine, but breathing shadow is heavy.
-    // Let's remove shadow for maximum stability first.
-    // lv_obj_set_style_shadow_width(celestial_body, 40, 0); 
-    lv_obj_clear_flag(celestial_body, LV_OBJ_FLAG_SCROLLABLE);
-    
-    // --- COMMENTED OUT TO PREVENT CRASH ---
-    // start_breathing_anim(celestial_body); 
-    // --------------------------------------
-
-    // --- LEFT SIDE: WEATHER INFO ---
-    sleep_weather_lbl = lv_label_create(sleep_overlay);
-    lv_obj_set_style_text_font(sleep_weather_lbl, &lv_font_montserrat_24, 0);
-    lv_obj_set_style_text_color(sleep_weather_lbl, lv_color_white(), 0);
-    lv_obj_align(sleep_weather_lbl, LV_ALIGN_TOP_LEFT, 30, 40);
-    lv_label_set_text(sleep_weather_lbl, "Loading...");
-
-    sleep_status_lbl = lv_label_create(sleep_overlay); 
-    lv_obj_set_style_text_font(sleep_status_lbl, &lv_font_montserrat_48, 0);
-    lv_obj_set_style_text_color(sleep_status_lbl, lv_color_white(), 0);
-    lv_obj_set_style_transform_zoom(sleep_status_lbl, 512, 0); 
-    lv_obj_align(sleep_status_lbl, LV_ALIGN_LEFT_MID, 40, 20);
-    lv_label_set_text(sleep_status_lbl, "--°");
-
-    lv_obj_t *lbl_city = lv_label_create(sleep_overlay);
-    lv_obj_set_style_text_font(lbl_city, &lv_font_montserrat_20, 0);
-    lv_obj_set_style_text_color(lbl_city, lv_color_white(), 0);
-    lv_obj_set_style_text_opa(lbl_city, LV_OPA_80, 0);
-    lv_obj_align(lbl_city, LV_ALIGN_BOTTOM_LEFT, 30, -40);
-    lv_label_set_text_fmt(lbl_city, "Hyderabad"); 
-
-    // --- RIGHT SIDE ---
-    sleep_time_lbl = lv_label_create(sleep_overlay);
-    lv_obj_set_style_text_font(sleep_time_lbl, &lv_font_montserrat_48, 0);
-    lv_obj_set_style_text_color(sleep_time_lbl, lv_color_white(), 0);
-    lv_obj_align(sleep_time_lbl, LV_ALIGN_TOP_RIGHT, -30, 40);
-    lv_label_set_text(sleep_time_lbl, "00:00");
-
-    sleep_date_lbl = lv_label_create(sleep_overlay);
-    lv_obj_set_style_text_font(sleep_date_lbl, &lv_font_montserrat_20, 0);
-    lv_obj_set_style_text_color(sleep_date_lbl, lv_color_white(), 0);
-    lv_obj_set_style_text_opa(sleep_date_lbl, LV_OPA_80, 0);
-    lv_obj_align(sleep_date_lbl, LV_ALIGN_TOP_RIGHT, -30, 95);
-    lv_label_set_text(sleep_date_lbl, "Mon, 01 Jan");
-
-    // --- BOTTOM RIGHT ---
-    lv_obj_t *notify_cont = lv_obj_create(sleep_overlay);
-    lv_obj_set_size(notify_cont, LV_SIZE_CONTENT, 35);
-    lv_obj_set_style_bg_color(notify_cont, lv_color_white(), 0);
-    lv_obj_set_style_bg_opa(notify_cont, LV_OPA_30, 0); 
-    lv_obj_set_style_radius(notify_cont, 20, 0);
-    lv_obj_set_style_border_width(notify_cont, 0, 0);
-    lv_obj_align(notify_cont, LV_ALIGN_BOTTOM_RIGHT, -30, -80);
-    
-    sleep_notify_badge = lv_label_create(notify_cont);
-    lv_obj_center(sleep_notify_badge);
-    lv_obj_set_style_text_color(sleep_notify_badge, lv_color_white(), 0);
-    lv_label_set_text(sleep_notify_badge, "0 Alerts");
-    lv_obj_set_user_data(sleep_notify_badge, notify_cont);
-    lv_obj_add_flag(notify_cont, LV_OBJ_FLAG_HIDDEN);
-
-    lv_obj_t *status_bar = lv_obj_create(sleep_overlay);
-    lv_obj_set_size(status_bar, LV_SIZE_CONTENT, 40);
-    lv_obj_align(status_bar, LV_ALIGN_BOTTOM_RIGHT, -20, -30);
-    lv_obj_set_style_bg_opa(status_bar, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(status_bar, 0, 0);
-    lv_obj_clear_flag(status_bar, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_flex_flow(status_bar, LV_FLEX_FLOW_ROW);
-    lv_obj_set_style_pad_gap(status_bar, 15, 0);
-
-    status_wifi_icon = lv_label_create(status_bar);
-    lv_label_set_text(status_wifi_icon, LV_SYMBOL_WIFI);
-    lv_obj_set_style_text_color(status_wifi_icon, lv_color_white(), 0);
-
-    status_mqtt_icon = lv_label_create(status_bar);
-    lv_label_set_text(status_mqtt_icon, LV_SYMBOL_LOOP);
-    lv_obj_set_style_text_color(status_mqtt_icon, lv_color_white(), 0);
-
-    status_batt_icon = lv_label_create(status_bar);
-    lv_label_set_text(status_batt_icon, LV_SYMBOL_BATTERY_FULL);
-    lv_obj_set_style_text_color(status_batt_icon, lv_color_white(), 0);
-
-    lv_obj_add_flag(sleep_overlay, LV_OBJ_FLAG_HIDDEN);
-}
-
 /* ================= TIME & DATE SCREEN ================= */
 void time_ta_event_cb(lv_event_t * e) {
     lv_event_code_t code = lv_event_get_code(e);
@@ -2020,12 +1914,26 @@ void fetch_weather_data() {
 
                 initial_weather_fetched = true; 
                 String bigTempStr = String(current_temp, 0) + "°";
-                if(sleep_status_lbl) lv_label_set_text(sleep_status_lbl, bigTempStr.c_str());
-                update_weather_visuals();
+                if(ui_uiLabelTemp) lv_label_set_text(ui_uiLabelTemp, bigTempStr.c_str());
+                
+                // 1. Get the enum type
+                weather_type_t type = get_weather_type(weather_code);
+                
+                // 2. Set the text description
+                String desc = "Unknown";
+                if(type == WEATHER_CLEAR) desc = "Clear";
+                else if(type == WEATHER_CLOUDS) desc = "Cloudy";
+                else if(type == WEATHER_RAIN) desc = "Rain";
+                else if(type == WEATHER_SNOW) desc = "Snow";
+                else if(type == WEATHER_THUNDER) desc = "Storm";
+                else if(type == WEATHER_FOG) desc = "Fog";
+
+                if(ui_uiLabelWeather) lv_label_set_text(ui_uiLabelWeather, desc.c_str());
+
+                // 3. CALL WITH ARGUMENTS (Fixes the compile error)
+                update_weather_ui(type, (is_day == 0)); 
+                
                 Serial.printf("Weather: %.1f C, Code: %d\n", current_temp, weather_code);
-            } else {
-                Serial.print("Weather JSON Fail: ");
-                Serial.println(error.c_str());
             }
         } else {
             Serial.printf("Weather HTTP Fail: %d\n", wCode);
@@ -2036,87 +1944,99 @@ void fetch_weather_data() {
     }
 }
 
-void update_weather_visuals() {
-    lv_color_t color_top, color_bot, celestial_color;
-    String conditionText = "Unknown";
-    bool show_celestial = true;
+// Helper function to update the UI
+void update_weather_ui(weather_type_t type, bool is_night) {
     
-    // 1. Determine Day/Night
-    bool is_night = (is_day == 0);
+    // Safety check: Ensure the screen exists
+    if (ui_uiScreenSleep == NULL || ui_uiIconWeather == NULL) return;
 
-    if (is_night) {
-        // --- NIGHT THEMES ---
-        color_bot = lv_color_black();
-        celestial_color = lv_color_white(); // Moon is white
-        
-        if (weather_code == 0) {
-            color_top = lv_palette_darken(LV_PALETTE_INDIGO, 4);
-            conditionText = "Clear Night";
-        } 
-        else if (weather_code <= 3) {
-            color_top = lv_palette_darken(LV_PALETTE_BLUE_GREY, 3);
-            conditionText = "Cloudy Night";
-            celestial_color = lv_palette_lighten(LV_PALETTE_GREY, 2); 
-        }
-        else {
-            color_top = lv_palette_darken(LV_PALETTE_GREY, 4);
-            conditionText = "Rainy Night";
-            show_celestial = false; // Hide moon if raining
-        }
-    } 
-    else {
-        // --- DAY THEMES ---
-        celestial_color = lv_palette_main(LV_PALETTE_YELLOW); // Sun is yellow
-        
-        if (weather_code == 0) { // Clear
-            color_top = lv_palette_main(LV_PALETTE_ORANGE);
-            color_bot = lv_palette_main(LV_PALETTE_RED); 
-            conditionText = "Sunny";
-        } 
-        else if (weather_code <= 3) { // Cloudy
-            color_top = lv_palette_lighten(LV_PALETTE_CYAN, 1);
-            color_bot = lv_palette_main(LV_PALETTE_BLUE_GREY);
-            conditionText = "Cloudy";
-            celestial_color = lv_color_white(); 
-        } 
-        else if (weather_code >= 51) { // Rain
-            color_top = lv_palette_darken(LV_PALETTE_GREY, 2);
-            color_bot = lv_palette_darken(LV_PALETTE_BLUE_GREY, 3);
-            conditionText = "Rain";
-            show_celestial = false; 
-        }
-        else { 
-            color_top = lv_palette_lighten(LV_PALETTE_BLUE, 1);
-            color_bot = lv_palette_lighten(LV_PALETTE_GREY, 1);
-            conditionText = "Normal";
-        }
+    const void * new_bg = NULL;
+    const void * new_icon = NULL;
+
+    // Logic to select the correct images based on Day/Night and Weather Type
+    switch (type) {
+        case WEATHER_CLEAR:
+            if (is_night) {
+                new_bg = &ui_img_scenes_clear_night_png;
+                new_icon = &ui_img_weather_night_png;
+            } else {
+                new_bg = &ui_img_scenes_clear_day_png;
+                new_icon = &ui_img_weather_day_png;
+            }
+            break;
+
+        case WEATHER_CLOUDS:
+            if (is_night) {
+                new_bg = &ui_img_scenes_cloud_night_png;
+                new_icon = &ui_img_weather_night_cloud_png;
+            } else {
+                new_bg = &ui_img_scenes_cloud_day_png;
+                new_icon = &ui_img_weather_day_cloud_png;
+            }
+            break;
+
+        case WEATHER_RAIN:
+            if (is_night) {
+                new_bg = &ui_img_scenes_rain_night_png;
+                new_icon = &ui_img_weather_night_rain_png;
+            } else {
+                new_bg = &ui_img_scenes_rain_day_png;
+                new_icon = &ui_img_weather_day_rain_png;
+            }
+            break;
+
+        case WEATHER_SNOW:
+            if (is_night) {
+                new_bg = &ui_img_scenes_snow_night_png;
+                new_icon = &ui_img_weather_night_snow_png;
+            } else {
+                new_bg = &ui_img_scenes_snow_day_png;
+                new_icon = &ui_img_weather_day_snow_png;
+            }
+            break;
+
+        case WEATHER_THUNDER:
+            // Assuming same background for day/night based on your list
+            new_bg = &ui_img_scenes_thunderstorm_png; 
+            new_icon = &ui_img_weather_thunder_storm_png;
+            break;
+
+        case WEATHER_FOG:
+            if (is_night) {
+                // You didn't list a "fog_night" scene, reusing cloud or generic night
+                new_bg = &ui_img_scenes_cloud_night_png; 
+                new_icon = &ui_img_weather_night_fog_png;
+            } else {
+                // You didn't list a "fog_day" scene, reusing cloud
+                new_bg = &ui_img_scenes_cloud_day_png;   
+                new_icon = &ui_img_weather_day_fog_png;
+            }
+            break;
+            
+        default:
+            return; // Unknown weather, do nothing
     }
 
-    // 1. Update Background Gradient
-    lv_style_set_bg_color(&style_weather_bg, color_top);
-    lv_style_set_bg_grad_color(&style_weather_bg, color_bot);
-    lv_obj_report_style_change(&style_weather_bg);
-    
-    // 2. Update Celestial Body (Sun/Moon)
-    if (show_celestial) {
-        if(celestial_body) lv_obj_clear_flag(celestial_body, LV_OBJ_FLAG_HIDDEN);
-        if(celestial_glow) lv_obj_clear_flag(celestial_glow, LV_OBJ_FLAG_HIDDEN);
-        
-        if(celestial_body) lv_obj_set_style_bg_color(celestial_body, celestial_color, 0);
-        if(celestial_glow) lv_obj_set_style_bg_color(celestial_glow, celestial_color, 0);
-    } else {
-        if(celestial_body) lv_obj_add_flag(celestial_body, LV_OBJ_FLAG_HIDDEN);
-        if(celestial_glow) lv_obj_add_flag(celestial_glow, LV_OBJ_FLAG_HIDDEN);
-    }
-    
-    // 3. Update Text
-    lv_label_set_text(sleep_weather_lbl, conditionText.c_str());
+    // Apply the Background Image
+    lv_obj_set_style_bg_image_src(ui_uiScreenSleep, new_bg, LV_PART_MAIN | LV_STATE_DEFAULT);
+
+    // Apply the Icon Image
+    // Note: We use style_bg_image_src because your icon is a generic Object, not an Image Widget
+    lv_obj_set_style_bg_image_src(ui_uiIconWeather, new_icon, LV_PART_MAIN | LV_STATE_DEFAULT);
 }
-
 /* ================= SETUP & LOOP ================= */
 
 void setup() {
   Serial.begin(115200);
+  Serial.printf("Flash Size: %d MB\n", ESP.getFlashChipSize() / (1024 * 1024));
+
+  const esp_partition_t * running_partition = esp_ota_get_running_partition();
+  if (running_partition != NULL) {
+    Serial.printf("Partition Size: %d MB\n", running_partition->size / (1024 * 1024));
+  } else {
+    Serial.println("Error: Could not read partition info.");
+  }
+
   Wire.begin(47, 48);
   Wire.setTimeOut(100);
 
@@ -2181,7 +2101,9 @@ void setup() {
   create_ha_screen(screen_ha); 
   create_about_screen(screen_about);
   create_time_date_screen(screen_time_date);
-  create_sleep_screen();
+
+  ui_init();
+
 
   lv_obj_add_event_cb(screen_home, swipe_event_cb, LV_EVENT_GESTURE, NULL);
   lv_obj_add_event_cb(screen_notifications, swipe_event_cb, LV_EVENT_GESTURE, NULL);
@@ -2253,24 +2175,57 @@ void loop() {
   check_sensor_logic();
 
   unsigned long now = millis();
-  if (now - last_touch_ms > SLEEP_TIMEOUT_MS) {
-      if (lv_obj_has_flag(sleep_overlay, LV_OBJ_FLAG_HIDDEN)) {
-          lv_obj_clear_flag(sleep_overlay, LV_OBJ_FLAG_HIDDEN);
-          ledcWrite(LCD_BL_PIN, BACKLIGHT_DIM_LEVEL);
+
+////////////////
+
+  unsigned long diff = now - last_touch_ms;
+
+  // Print status every 2 seconds so you can watch the countdown
+  static uint32_t debug_timer = 0;
+  if (now - debug_timer > 2000) {
+      debug_timer = now;
+      bool is_sleeping = (lv_scr_act() == ui_uiScreenSleep);
+      Serial.printf("[DEBUG] Active: %lu ms | Sleep Threshold: %d ms | Current Screen: %s\n", 
+                    diff, SLEEP_TIMEOUT_MS, is_sleeping ? "SLEEP" : "HOME/OTHER");
+  }
+
+  if (diff > SLEEP_TIMEOUT_MS) {
+      // We SHOULD be in sleep mode
+      if (lv_scr_act() != ui_uiScreenSleep) {
+          Serial.println(">>> SWITCHING TO SLEEP SCREEN NOW <<<");
+          
+          // Ensure the object exists before switching
+          if(ui_uiScreenSleep == NULL) {
+              Serial.println("ERROR: ui_uiScreenSleep is NULL! Check ui_init()");
+          } else {
+              lv_scr_load_anim(ui_uiScreenSleep, LV_SCR_LOAD_ANIM_FADE_ON, 500, 0, false);
+              ledcWrite(LCD_BL_PIN, BACKLIGHT_DIM_LEVEL);
+          }
       }
   } else {
-    if (!lv_obj_has_flag(sleep_overlay, LV_OBJ_FLAG_HIDDEN)) {
-        lv_obj_add_flag(sleep_overlay, LV_OBJ_FLAG_HIDDEN);
-        ledcWrite(LCD_BL_PIN, 200);
-        if(lv_scr_act() != screen_home) {
-            if(msg_popup) { lv_obj_del(msg_popup); msg_popup = NULL; }
-            if(kb_wifi) lv_obj_add_flag(kb_wifi, LV_OBJ_FLAG_HIDDEN);
-            if(kb_time) lv_obj_add_flag(kb_time, LV_OBJ_FLAG_HIDDEN);
-            if(scan_list_ui) lv_obj_add_flag(scan_list_ui, LV_OBJ_FLAG_HIDDEN);
-            lv_scr_load_anim(screen_home, LV_SCR_LOAD_ANIM_FADE_ON, 200, 0, false);
-        }
-    }
+      // We SHOULD be awake
+      if (lv_scr_act() == ui_uiScreenSleep) {
+          Serial.println(">>> WAKING UP - SWITCHING TO HOME <<<");
+          lv_scr_load_anim(screen_home, LV_SCR_LOAD_ANIM_FADE_ON, 200, 0, false);
+          ledcWrite(LCD_BL_PIN, 200);
+          if(msg_popup) { lv_obj_del(msg_popup); msg_popup = NULL; }
+      }
   }
+
+////////////////
+
+//   if (now - last_touch_ms > SLEEP_TIMEOUT_MS) {
+//       if (lv_scr_act() != ui_uiScreenSleep) {
+//           lv_scr_load_anim(ui_uiScreenSleep, LV_SCR_LOAD_ANIM_FADE_ON, 500, 0, false);
+//           ledcWrite(LCD_BL_PIN, BACKLIGHT_DIM_LEVEL);
+//       }
+//   } else {
+//       if (lv_scr_act() == ui_uiScreenSleep) {
+//           lv_scr_load_anim(screen_home, LV_SCR_LOAD_ANIM_FADE_ON, 200, 0, false);
+//           ledcWrite(LCD_BL_PIN, 200);
+//           if(msg_popup) { lv_obj_del(msg_popup); msg_popup = NULL; }
+//       }
+//   }
 
   switch (current_wifi_state) {
     case WIFI_SCANNING: {
@@ -2466,96 +2421,102 @@ void loop() {
     if (h == 0) h = 12; else if (h > 12) h -= 12;
     int m = dt.getMonth(); if (m < 1) m = 1; if (m > 12) m = 12;
 
-    char buf[20], date[20];
+    char buf[20], buf_sleep[20], date[20];
+    
     snprintf(buf, sizeof(buf), "%02d:%02d %s", h, dt.getMinute(), ampm);
+    snprintf(buf_sleep, sizeof(buf_sleep), "%02d:%02d", h, dt.getMinute()); 
     snprintf(date, sizeof(date), "%02d %s %04d", dt.getDay(), monthNames[m-1], dt.getYear());
 
-    lv_label_set_text(clock_label, buf);
+    if(clock_label) lv_label_set_text(clock_label, buf);
 
-    if (!lv_obj_has_flag(sleep_overlay, LV_OBJ_FLAG_HIDDEN)) {
-       lv_label_set_text(sleep_time_lbl, buf);
-       lv_label_set_text(sleep_date_lbl, date);
+    if (ui_uiScreenSleep) {
+       if(ui_uiLabelTime) lv_label_set_text(ui_uiLabelTime, buf_sleep);
+       if(ui_uiLabelDate) lv_label_set_text(ui_uiLabelDate, date);
 
        // 2. Update Weather Temp & Background
        if (initial_weather_fetched) {
            String bigTempStr = String(current_temp, 0) + "°";
-           lv_label_set_text(sleep_status_lbl, bigTempStr.c_str());
+           lv_label_set_text(ui_uiLabelTemp, bigTempStr.c_str());
         }
 
        // --- Notification Chip Logic ---
        int count = get_notification_count();
-       lv_obj_t* notify_chip = (lv_obj_t*)lv_obj_get_user_data(sleep_notify_badge);
+       lv_obj_t* notify_chip = (lv_obj_t*)lv_obj_get_user_data(ui_uiPanelAlertsLabel);
        
        if (count > 0) {
          if(notify_chip) lv_obj_clear_flag(notify_chip, LV_OBJ_FLAG_HIDDEN);
          String n = String(LV_SYMBOL_BELL) + "  " + String(count) + " Alerts";
-         lv_label_set_text(sleep_notify_badge, n.c_str());
+         lv_label_set_text(ui_uiPanelAlertsLabel, n.c_str());
        } else {
          if(notify_chip) lv_obj_add_flag(notify_chip, LV_OBJ_FLAG_HIDDEN);
        }
        
        // --- NEW COLORFUL STATUS LOGIC ---
-       
-       // 1. WiFi Color Logic
-       if(current_wifi_state == WIFI_CONNECTED) {
-           lv_obj_set_style_text_color(status_wifi_icon, lv_color_white(), 0); // Green if OK
-       } else if (current_wifi_state == WIFI_CONNECTING) {
-           lv_obj_set_style_text_color(status_wifi_icon, lv_palette_main(LV_PALETTE_ORANGE), 0); // Orange if connecting
-       } else {
-           lv_obj_set_style_text_color(status_wifi_icon, lv_palette_main(LV_PALETTE_RED), 0); // Dim Grey if off
+       if (ui_uiIconWifi != NULL) {
+           if(current_wifi_state == WIFI_CONNECTED) {
+               lv_obj_set_style_text_color(ui_uiIconWifi, lv_color_white(), 0); // Green if OK
+           } else if (current_wifi_state == WIFI_CONNECTING) {
+               lv_obj_set_style_text_color(ui_uiIconWifi, lv_palette_main(LV_PALETTE_ORANGE), 0); // Orange if connecting
+           } else {
+               lv_obj_set_style_text_color(ui_uiIconWifi, lv_palette_main(LV_PALETTE_RED), 0); // Red if off
+           }
        }
 
        // 2. MQTT Color Logic
-       if (mqtt_enabled) {
-           if (mqtt.connected()) {
-               lv_obj_set_style_text_color(status_mqtt_icon, lv_color_white(), 0); // Blue if Connected
+       if (ui_uiIconMqtt != NULL) {
+           if (mqtt_enabled) {
+               if (mqtt.connected()) {
+                   lv_obj_set_style_text_color(ui_uiIconMqtt, lv_color_white(), 0); // Blue if Connected
+               } else {
+                   lv_obj_set_style_text_color(ui_uiIconMqtt, lv_palette_main(LV_PALETTE_ORANGE), 0); // Orange if retrying
+               }
            } else {
-               lv_obj_set_style_text_color(status_mqtt_icon, lv_palette_main(LV_PALETTE_ORANGE), 0); // Orange if retrying
+               lv_obj_set_style_text_color(ui_uiIconMqtt, lv_palette_main(LV_PALETTE_RED), 0); // Dark if disabled
            }
-       } else {
-           lv_obj_set_style_text_color(status_mqtt_icon, lv_palette_main(LV_PALETTE_RED), 0); // Dark if disabled
        }
        
        // 3. Battery Color & Icon Logic
-       if (power.isBatteryConnect()) {
-           int pct = power.getBatteryPercent();
-           String batText = "";
-           
-           // Color based on percentage
-           if (pct > 95) {
-               lv_obj_set_style_text_color(status_batt_icon, lv_color_white(), 0);
-               batText = String(LV_SYMBOL_BATTERY_FULL);
-           }
-           else if (pct > 70 && pct <= 95) {
-               lv_obj_set_style_text_color(status_batt_icon, lv_color_white(), 0);
-               batText = String(LV_SYMBOL_BATTERY_3);
-           }
-           else if (pct > 40 && pct <= 70) {
-               lv_obj_set_style_text_color(status_batt_icon, lv_color_white(), 0);
-               batText = String(LV_SYMBOL_BATTERY_2);
-           }
-           else if (pct > 15 && pct <= 40) {
-               lv_obj_set_style_text_color(status_batt_icon, lv_palette_main(LV_PALETTE_YELLOW), 0);
-               batText = String(LV_SYMBOL_BATTERY_1);
-           }
-           else if (pct > 5 && pct <= 15) {
-               lv_obj_set_style_text_color(status_batt_icon, lv_palette_main(LV_PALETTE_RED), 0);
-               batText = String(LV_SYMBOL_BATTERY_1);
+       if (ui_uiIconBat != NULL) {
+           if (power.isBatteryConnect()) {
+               int pct = power.getBatteryPercent();
+               String batText = "";
+               
+               // Color based on percentage
+               if (pct > 95) {
+                   lv_obj_set_style_text_color(ui_uiIconBat, lv_color_white(), 0);
+                   batText = String(LV_SYMBOL_BATTERY_FULL);
+               }
+               else if (pct > 70 && pct <= 95) {
+                   lv_obj_set_style_text_color(ui_uiIconBat, lv_color_white(), 0);
+                   batText = String(LV_SYMBOL_BATTERY_3);
+               }
+               else if (pct > 40 && pct <= 70) {
+                   lv_obj_set_style_text_color(ui_uiIconBat, lv_color_white(), 0);
+                   batText = String(LV_SYMBOL_BATTERY_2);
+               }
+               else if (pct > 15 && pct <= 40) {
+                   lv_obj_set_style_text_color(ui_uiIconBat, lv_palette_main(LV_PALETTE_YELLOW), 0);
+                   batText = String(LV_SYMBOL_BATTERY_1);
+               }
+               else if (pct > 5 && pct <= 15) {
+                   lv_obj_set_style_text_color(ui_uiIconBat, lv_palette_main(LV_PALETTE_RED), 0);
+                   batText = String(LV_SYMBOL_BATTERY_1);
+               } else {
+                   lv_obj_set_style_text_color(ui_uiIconBat, lv_palette_main(LV_PALETTE_RED), 0);
+                   batText = String(LV_SYMBOL_BATTERY_EMPTY);
+               }
+               
+               if(power.isCharging()) {
+                   lv_obj_set_style_text_color(ui_uiIconBat, lv_palette_main(LV_PALETTE_YELLOW), 0);
+                   batText = String(LV_SYMBOL_CHARGE);
+               }
+               lv_label_set_text(ui_uiIconBat, batText.c_str());
+               
            } else {
-               lv_obj_set_style_text_color(status_batt_icon, lv_palette_main(LV_PALETTE_RED), 0);
-               batText = String(LV_SYMBOL_BATTERY_EMPTY);
+               // USB Powered
+               lv_obj_set_style_text_color(ui_uiIconBat, lv_color_white(), 0);
+               lv_label_set_text(ui_uiIconBat, LV_SYMBOL_USB);
            }
-           
-           if(power.isCharging()) {
-               lv_obj_set_style_text_color(status_batt_icon, lv_palette_main(LV_PALETTE_YELLOW), 0);
-               batText = String(LV_SYMBOL_CHARGE);
-           }
-           lv_label_set_text(status_batt_icon, batText.c_str());
-           
-       } else {
-           // USB Powered
-           lv_obj_set_style_text_color(status_batt_icon, lv_color_white(), 0);
-           lv_label_set_text(status_batt_icon, LV_SYMBOL_USB);
        }
     }
   }
