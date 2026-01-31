@@ -2164,15 +2164,6 @@ void loop() {
   unsigned long now = millis();
   unsigned long diff = now - last_touch_ms;
 
-  // Print status every 2 seconds so you can watch the countdown
-  static uint32_t debug_timer = 0;
-  if (now - debug_timer > 2000) {
-      debug_timer = now;
-      bool is_sleeping = (lv_scr_act() == ui_uiScreenSleep);
-      Serial.printf("[DEBUG] Active: %lu ms | Sleep Threshold: %d ms | Current Screen: %s\n", 
-                    diff, SLEEP_TIMEOUT_MS, is_sleeping ? "SLEEP" : "HOME/OTHER");
-  }
-
   if (diff > SLEEP_TIMEOUT_MS) {
       // We SHOULD be in sleep mode
       if (lv_scr_act() != ui_uiScreenSleep) {
