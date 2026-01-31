@@ -15,8 +15,6 @@
 #include <Preferences.h>
 
 #include "ui.h"
-#include <esp_partition.h>
-#include <esp_ota_ops.h>
 
 /* ================= CONFIG ================= */
 
@@ -332,9 +330,7 @@ void add_notification(String msg) {
 
     notification_ui_dirty = true;
 
-    if (!lv_obj_has_flag(ui_uiScreenSleep, LV_OBJ_FLAG_HIDDEN)) {
-        ledcWrite(LCD_BL_PIN, 200); 
-        lv_obj_add_flag(ui_uiScreenSleep, LV_OBJ_FLAG_HIDDEN);
+    if (lv_scr_act() != ui_uiScreenSleep) {
         last_touch_ms = millis();
     }
 }
@@ -2028,15 +2024,6 @@ void update_weather_ui(weather_type_t type, bool is_night) {
 
 void setup() {
   Serial.begin(115200);
-  Serial.printf("Flash Size: %d MB\n", ESP.getFlashChipSize() / (1024 * 1024));
-
-  const esp_partition_t * running_partition = esp_ota_get_running_partition();
-  if (running_partition != NULL) {
-    Serial.printf("Partition Size: %d MB\n", running_partition->size / (1024 * 1024));
-  } else {
-    Serial.println("Error: Could not read partition info.");
-  }
-
   Wire.begin(47, 48);
   Wire.setTimeOut(100);
 
@@ -2175,9 +2162,6 @@ void loop() {
   check_sensor_logic();
 
   unsigned long now = millis();
-
-////////////////
-
   unsigned long diff = now - last_touch_ms;
 
   // Print status every 2 seconds so you can watch the countdown
@@ -2211,21 +2195,6 @@ void loop() {
           if(msg_popup) { lv_obj_del(msg_popup); msg_popup = NULL; }
       }
   }
-
-////////////////
-
-//   if (now - last_touch_ms > SLEEP_TIMEOUT_MS) {
-//       if (lv_scr_act() != ui_uiScreenSleep) {
-//           lv_scr_load_anim(ui_uiScreenSleep, LV_SCR_LOAD_ANIM_FADE_ON, 500, 0, false);
-//           ledcWrite(LCD_BL_PIN, BACKLIGHT_DIM_LEVEL);
-//       }
-//   } else {
-//       if (lv_scr_act() == ui_uiScreenSleep) {
-//           lv_scr_load_anim(screen_home, LV_SCR_LOAD_ANIM_FADE_ON, 200, 0, false);
-//           ledcWrite(LCD_BL_PIN, 200);
-//           if(msg_popup) { lv_obj_del(msg_popup); msg_popup = NULL; }
-//       }
-//   }
 
   switch (current_wifi_state) {
     case WIFI_SCANNING: {
@@ -2442,13 +2411,15 @@ void loop() {
        // --- Notification Chip Logic ---
        int count = get_notification_count();
        lv_obj_t* notify_chip = (lv_obj_t*)lv_obj_get_user_data(ui_uiPanelAlertsLabel);
-       
-       if (count > 0) {
-         if(notify_chip) lv_obj_clear_flag(notify_chip, LV_OBJ_FLAG_HIDDEN);
-         String n = String(LV_SYMBOL_BELL) + "  " + String(count) + " Alerts";
-         lv_label_set_text(ui_uiPanelAlertsLabel, n.c_str());
-       } else {
-         if(notify_chip) lv_obj_add_flag(notify_chip, LV_OBJ_FLAG_HIDDEN);
+
+       if (ui_uiPanelAlertsLabel != NULL) {
+           if (count > 0) {
+               lv_obj_clear_flag(ui_uiPanelAlertsLabel, LV_OBJ_FLAG_HIDDEN);
+               String n = String(LV_SYMBOL_BELL) + "  " + String(count) + " Alerts";
+               lv_label_set_text(ui_uiPanelAlertsLabel, n.c_str());
+           } else {
+               lv_obj_add_flag(ui_uiPanelAlertsLabel, LV_OBJ_FLAG_HIDDEN);
+           }
        }
        
        // --- NEW COLORFUL STATUS LOGIC ---
