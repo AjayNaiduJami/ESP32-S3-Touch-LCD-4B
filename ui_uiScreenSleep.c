@@ -24,7 +24,7 @@ lv_obj_set_height( ui_uiLabelDate, LV_SIZE_CONTENT);   /// 1
 lv_obj_set_x( ui_uiLabelDate, -30 );
 lv_obj_set_y( ui_uiLabelDate, 50 );
 lv_obj_set_align( ui_uiLabelDate, LV_ALIGN_TOP_RIGHT );
-lv_label_set_text(ui_uiLabelDate,"30 Jan");
+lv_label_set_text(ui_uiLabelDate,"1 Jan");
 lv_obj_set_style_text_font(ui_uiLabelDate, &lv_font_montserrat_20, LV_PART_MAIN| LV_STATE_DEFAULT);
 
 ui_uiLabelTime = lv_label_create(ui_uiScreenSleep);
@@ -33,7 +33,7 @@ lv_obj_set_height( ui_uiLabelTime, LV_SIZE_CONTENT);   /// 1
 lv_obj_set_x( ui_uiLabelTime, -110 );
 lv_obj_set_y( ui_uiLabelTime, 75 );
 lv_obj_set_align( ui_uiLabelTime, LV_ALIGN_TOP_RIGHT );
-lv_label_set_text(ui_uiLabelTime,"10:45");
+lv_label_set_text(ui_uiLabelTime,"12:00");
 lv_obj_set_style_text_font(ui_uiLabelTime, &lv_font_montserrat_34, LV_PART_MAIN| LV_STATE_DEFAULT);
 lv_obj_set_style_transform_scale(ui_uiLabelTime, 500, LV_PART_MAIN| LV_STATE_DEFAULT);
 
@@ -43,7 +43,7 @@ lv_obj_set_height( ui_uiLabelCity, LV_SIZE_CONTENT);   /// 1
 lv_obj_set_x( ui_uiLabelCity, -30 );
 lv_obj_set_y( ui_uiLabelCity, -80 );
 lv_obj_set_align( ui_uiLabelCity, LV_ALIGN_RIGHT_MID );
-lv_label_set_text(ui_uiLabelCity,"Hyderabad");
+lv_label_set_text(ui_uiLabelCity,"No City");
 lv_obj_set_style_text_decor(ui_uiLabelCity, LV_TEXT_DECOR_NONE, LV_PART_MAIN| LV_STATE_DEFAULT);
 lv_obj_set_style_text_font(ui_uiLabelCity, &lv_font_montserrat_20, LV_PART_MAIN| LV_STATE_DEFAULT);
 
@@ -53,7 +53,7 @@ lv_obj_set_height( ui_uiPanelAlertsLabel, LV_SIZE_CONTENT);   /// 1
 lv_obj_set_x( ui_uiPanelAlertsLabel, -30 );
 lv_obj_set_y( ui_uiPanelAlertsLabel, -120 );
 lv_obj_set_align( ui_uiPanelAlertsLabel, LV_ALIGN_BOTTOM_RIGHT );
-lv_label_set_text(ui_uiPanelAlertsLabel,"80 Alerts");
+lv_label_set_text(ui_uiPanelAlertsLabel,"0 Alerts");
 lv_obj_remove_flag( ui_uiPanelAlertsLabel, LV_OBJ_FLAG_CLICK_FOCUSABLE );    /// Flags
 lv_obj_set_style_text_color(ui_uiPanelAlertsLabel, lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT );
 lv_obj_set_style_text_opa(ui_uiPanelAlertsLabel, 255, LV_PART_MAIN| LV_STATE_DEFAULT);
@@ -65,7 +65,7 @@ lv_obj_set_height( ui_uiLabelTemp, LV_SIZE_CONTENT);   /// 1
 lv_obj_set_x( ui_uiLabelTemp, 30 );
 lv_obj_set_y( ui_uiLabelTemp, 85 );
 lv_obj_set_align( ui_uiLabelTemp, LV_ALIGN_LEFT_MID );
-lv_label_set_text(ui_uiLabelTemp,"24°C");
+lv_label_set_text(ui_uiLabelTemp,"--°C");
 lv_obj_set_style_text_font(ui_uiLabelTemp, &lv_font_montserrat_44, LV_PART_MAIN| LV_STATE_DEFAULT);
 lv_obj_set_style_transform_scale(ui_uiLabelTemp, 400, LV_PART_MAIN| LV_STATE_DEFAULT);
 
@@ -75,7 +75,7 @@ lv_obj_set_height( ui_uiLabelWeather, LV_SIZE_CONTENT);   /// 1
 lv_obj_set_x( ui_uiLabelWeather, 30 );
 lv_obj_set_y( ui_uiLabelWeather, -50 );
 lv_obj_set_align( ui_uiLabelWeather, LV_ALIGN_BOTTOM_LEFT );
-lv_label_set_text(ui_uiLabelWeather,"Partly Cloudy");
+lv_label_set_text(ui_uiLabelWeather,"No Data");
 lv_obj_set_style_text_font(ui_uiLabelWeather, &lv_font_montserrat_28, LV_PART_MAIN| LV_STATE_DEFAULT);
 lv_obj_set_style_opa(ui_uiLabelWeather, 200, LV_PART_MAIN| LV_STATE_DEFAULT);
 

@@ -1871,7 +1871,10 @@ void fetch_weather_data() {
             geo_lat = docLoc["lat"];
             geo_lon = docLoc["lon"];
             const char* city = docLoc["city"];
-            if (city) city_name = String(city);
+            if (city) {
+                city_name = String(city);
+                if (ui_uiLabelCity) lv_label_set_text(ui_uiLabelCity, city_name.c_str());
+            }
             Serial.printf("Location Success: %s (%.4f, %.4f)\n", city_name.c_str(), geo_lat, geo_lon);
         } else {
             Serial.println("Location API status: fail");
@@ -2091,6 +2094,9 @@ void setup() {
 
   ui_init();
 
+  if (ui_uiIconWeather != NULL) {
+    lv_obj_add_flag(ui_uiIconWeather, LV_OBJ_FLAG_HIDDEN);
+  }
 
   lv_obj_add_event_cb(screen_home, swipe_event_cb, LV_EVENT_GESTURE, NULL);
   lv_obj_add_event_cb(screen_notifications, swipe_event_cb, LV_EVENT_GESTURE, NULL);
