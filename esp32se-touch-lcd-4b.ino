@@ -189,6 +189,32 @@ const char* icons[SWITCH_COUNT] = {
   LV_SYMBOL_WARNING, LV_SYMBOL_WARNING, LV_SYMBOL_OK
 };
 
+String get_weather_description(int code) {
+    switch(code) {
+        case 0: return "Clear Sky";
+        case 1: return "Mainly Clear";
+        case 2: return "Partly Cloudy";
+        case 3: return "Overcast";
+        case 45: case 48: return "Fog";
+        case 51: return "Light Drizzle";
+        case 53: return "Moderate Drizzle";
+        case 55: return "Dense Drizzle";
+        case 56: case 57: return "Freezing Drizzle";
+        case 61: return "Slight Rain";
+        case 63: return "Moderate Rain";
+        case 65: return "Heavy Rain";
+        case 66: case 67: return "Freezing Rain";
+        case 71: return "Slight Snow";
+        case 73: return "Moderate Snow";
+        case 75: return "Heavy Snow";
+        case 77: return "Snow Grains";
+        case 80: case 81: case 82: return "Rain Showers";
+        case 85: case 86: return "Snow Showers";
+        case 95: case 96: case 99: return "Thunderstorm";
+        default: return "Unknown";
+    }
+}
+
 weather_type_t get_weather_type(int wmo_code) {
     switch(wmo_code) {
         case 0: return WEATHER_CLEAR;
@@ -1917,19 +1943,10 @@ void fetch_weather_data() {
                 
                 // 1. Get the enum type
                 weather_type_t type = get_weather_type(weather_code);
-                
-                // 2. Set the text description
-                String desc = "Unknown";
-                if(type == WEATHER_CLEAR) desc = "Clear";
-                else if(type == WEATHER_CLOUDS) desc = "Cloudy";
-                else if(type == WEATHER_RAIN) desc = "Rain";
-                else if(type == WEATHER_SNOW) desc = "Snow";
-                else if(type == WEATHER_THUNDER) desc = "Storm";
-                else if(type == WEATHER_FOG) desc = "Fog";
 
+                String desc = get_weather_description(weather_code);
                 if(ui_uiLabelWeather) lv_label_set_text(ui_uiLabelWeather, desc.c_str());
 
-                // 3. CALL WITH ARGUMENTS (Fixes the compile error)
                 update_weather_ui(type, (is_day == 0)); 
                 
                 Serial.printf("Weather: %.1f C, Code: %d\n", current_temp, weather_code);
