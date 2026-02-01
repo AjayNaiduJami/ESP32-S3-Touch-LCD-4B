@@ -2350,9 +2350,6 @@ void loop() {
                 prefs.begin("sys_config", false);
                 prefs.putBool("mqtt_en", false);
                 prefs.end();
-                
-                if(sw_mqtt_enable) lv_obj_clear_state(sw_mqtt_enable, LV_STATE_CHECKED);
-                if(cont_ha_inputs) lv_obj_add_flag(cont_ha_inputs, LV_OBJ_FLAG_HIDDEN);
                 if(lbl_ha_status) {
                     lv_label_set_text(lbl_ha_status, "Status: Disabled (Failed)");
                     lv_obj_set_style_text_color(lbl_ha_status, lv_palette_main(LV_PALETTE_RED), 0);
@@ -2525,54 +2522,78 @@ void loop() {
           }
       }
   }
-  
+
   if (lv_scr_act() == screen_power) {
-      String info = "";
-      info += "POWER STATUS:\n";
+      // Create fixed buffers. 512 bytes is plenty for the final text.
+      char pwr_buf[256];
+      char net_buf[128];
+      char mqtt_buf[128];
+      char final_buf[512];
+
+      // --- 1. POWER STATUS BUILDER ---
       bool isPluggedIn = (power.getVbusVoltage() > 4000);
       bool isBatteryConnected = power.isBatteryConnect();
+      
       if (isPluggedIn) {
-         info += "Source: USB Power\n";
-         if (isBatteryConnected) {
-             info += "Battery: " + String(power.getBatteryPercent()) + "%\n";
-             if (power.isCharging()) info += "Status: Charging ⚡\n";
-             else info += "Status: Fully Charged\n";
-         } else {
-             info += "Battery: Disconnected\n";
-             info += "Status: System Active\n";
-         }
-         info += "VBUS: " + String(power.getVbusVoltage()) + " mV\n";
+          if (isBatteryConnected) {
+              snprintf(pwr_buf, sizeof(pwr_buf), 
+                  "POWER STATUS:\nSource: USB Power\nBattery: %d%%\nStatus: %s\nVBUS: %u mV", 
+                  power.getBatteryPercent(),
+                  power.isCharging() ? "Charging " LV_SYMBOL_CHARGE : "Fully Charged",
+                  power.getVbusVoltage()
+              );
+          } else {
+              snprintf(pwr_buf, sizeof(pwr_buf), 
+                  "POWER STATUS:\nSource: USB Power\nBattery: Disconnected\nStatus: System Active\nVBUS: %u mV", 
+                  power.getVbusVoltage()
+              );
+          }
       } else {
-         info += "Source: Battery\n";
-         if (isBatteryConnected) {
-             info += "Level: " + String(power.getBatteryPercent()) + "%\n";
-             info += "Voltage: " + String(power.getBattVoltage()) + " mV\n";
-             info += "Status: Discharging\n";
-         } else {
-             info += "Status: No Power Source?\n";
-         }
+          // Battery Power
+          if (isBatteryConnected) {
+              snprintf(pwr_buf, sizeof(pwr_buf), 
+                  "POWER STATUS:\nSource: Battery\nLevel: %d%%\nVoltage: %u mV\nStatus: Discharging", 
+                  power.getBatteryPercent(),
+                  power.getBattVoltage()
+              );
+          } else {
+              snprintf(pwr_buf, sizeof(pwr_buf), 
+                  "POWER STATUS:\nSource: Battery\nStatus: No Power Source?"
+              );
+          }
       }
-      info += "\nNETWORK STATUS:\n";
+
+      // --- 2. NETWORK STATUS BUILDER ---
       if(current_wifi_state == WIFI_CONNECTED) {
-          info += "WiFi: Connected\n";
-          info += "SSID: " + WiFi.SSID() + "\n";
-          info += "IP: " + WiFi.localIP().toString() + "\n";
           long rssi = WiFi.RSSI();
           int quality = 2 * (rssi + 100);
           if (quality > 100) quality = 100; if (quality < 0) quality = 0;
-          info += "Signal: " + String(quality) + "%\n";
+          
+          snprintf(net_buf, sizeof(net_buf), 
+              "\nNETWORK STATUS:\nWiFi: Connected\nSSID: %s\nIP: %s\nSignal: %d%%",
+              WiFi.SSID().c_str(),
+              WiFi.localIP().toString().c_str(),
+              quality
+          );
       } else {
-          info += "WiFi: Disconnected\n";
+          snprintf(net_buf, sizeof(net_buf), "\nNETWORK STATUS:\nWiFi: Disconnected");
       }
-      info += "\nMQTT STATUS:\n";
+
+      // --- 3. MQTT STATUS BUILDER ---
       if (!mqtt_enabled) {
-          info += "State: Disabled\n";
+          snprintf(mqtt_buf, sizeof(mqtt_buf), "\nMQTT STATUS:\nState: Disabled");
       } else if (mqtt.connected()) {
-          info += "State: Connected\n";
-          info += "Broker: " + String(mqtt_host) + "\n";
+          snprintf(mqtt_buf, sizeof(mqtt_buf), 
+              "\nMQTT STATUS:\nState: Connected\nBroker: %s", 
+              mqtt_host
+          );
       } else {
-          info += "State: Connecting...\n";
+          snprintf(mqtt_buf, sizeof(mqtt_buf), "\nMQTT STATUS:\nState: Connecting...");
       }
-      lv_label_set_text(power_info_label, info.c_str());
+
+      // --- 4. COMBINE AND SET ---
+      snprintf(final_buf, sizeof(final_buf), "%s\n%s\n%s", pwr_buf, net_buf, mqtt_buf);
+      
+      lv_label_set_text(power_info_label, final_buf);
   }
 }
