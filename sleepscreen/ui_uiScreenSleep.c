@@ -7,7 +7,7 @@
 
 lv_obj_t *uic_uiIconWeather;
 lv_obj_t *uic_uiScreenSleep;
-lv_obj_t *ui_uiScreenSleep = NULL;lv_obj_t *ui_uiLabelDate = NULL;lv_obj_t *ui_uiLabelTime = NULL;lv_obj_t *ui_uiLabelCity = NULL;lv_obj_t *ui_uiPanelAlertsLabel = NULL;lv_obj_t *ui_uiLabelTemp = NULL;lv_obj_t *ui_uiLabelWeather = NULL;lv_obj_t *ui_uiIconWifi = NULL;lv_obj_t *ui_uiIconMqtt = NULL;lv_obj_t *ui_uiIconBat = NULL;lv_obj_t *ui_uiIconWeather = NULL;
+lv_obj_t *ui_uiScreenSleep = NULL;lv_obj_t *ui_uiImgBg = NULL;lv_obj_t *ui_uiLabelDate = NULL;lv_obj_t *ui_uiLabelTime = NULL;lv_obj_t *ui_uiLabelCity = NULL;lv_obj_t *ui_uiPanelAlertsLabel = NULL;lv_obj_t *ui_uiLabelTemp = NULL;lv_obj_t *ui_uiLabelWeather = NULL;lv_obj_t *ui_uiIconWifi = NULL;lv_obj_t *ui_uiIconMqtt = NULL;lv_obj_t *ui_uiIconBat = NULL;lv_obj_t *ui_uiIconWeather = NULL;
 // event funtions
 
 // build funtions
@@ -16,7 +16,17 @@ void ui_uiScreenSleep_screen_init(void)
 {
 ui_uiScreenSleep = lv_obj_create(NULL);
 lv_obj_remove_flag( ui_uiScreenSleep, LV_OBJ_FLAG_SCROLLABLE );    /// Flags
-lv_obj_set_style_bg_image_src( ui_uiScreenSleep, &ui_img_scenes_clear_day_png, LV_PART_MAIN | LV_STATE_DEFAULT );
+lv_obj_set_style_bg_color(ui_uiScreenSleep, lv_color_hex(0x000000), LV_PART_MAIN | LV_STATE_DEFAULT );
+lv_obj_set_style_bg_opa(ui_uiScreenSleep, 255, LV_PART_MAIN| LV_STATE_DEFAULT);
+lv_obj_set_style_opa(ui_uiScreenSleep, 255, LV_PART_MAIN| LV_STATE_DEFAULT);
+
+ui_uiImgBg = lv_image_create(ui_uiScreenSleep);
+lv_image_set_src(ui_uiImgBg, &ui_img_scenes_clear_day_png);
+lv_obj_set_width( ui_uiImgBg, LV_SIZE_CONTENT);  /// 1
+lv_obj_set_height( ui_uiImgBg, LV_SIZE_CONTENT);   /// 1
+lv_obj_set_align( ui_uiImgBg, LV_ALIGN_CENTER );
+lv_obj_add_flag( ui_uiImgBg, LV_OBJ_FLAG_CLICKABLE );   /// Flags
+lv_obj_remove_flag( ui_uiImgBg, LV_OBJ_FLAG_SCROLLABLE );    /// Flags
 
 ui_uiLabelDate = lv_label_create(ui_uiScreenSleep);
 lv_obj_set_width( ui_uiLabelDate, LV_SIZE_CONTENT);  /// 1
@@ -128,6 +138,7 @@ void ui_uiScreenSleep_screen_destroy(void)
 // NULL screen variables
 uic_uiScreenSleep= NULL;
 ui_uiScreenSleep= NULL;
+ui_uiImgBg= NULL;
 ui_uiLabelDate= NULL;
 ui_uiLabelTime= NULL;
 ui_uiLabelCity= NULL;

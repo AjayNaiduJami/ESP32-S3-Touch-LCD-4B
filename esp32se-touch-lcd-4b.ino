@@ -2034,7 +2034,7 @@ void update_weather_ui(weather_type_t type, bool is_night) {
     }
 
     // Apply the Background Image
-    lv_obj_set_style_bg_image_src(ui_uiScreenSleep, new_bg, LV_PART_MAIN | LV_STATE_DEFAULT);
+    if (ui_uiImgBg) lv_image_set_src(ui_uiImgBg, new_bg);
 
     // Apply the Icon Image
     // Note: We use style_bg_image_src because your icon is a generic Object, not an Image Widget

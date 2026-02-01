@@ -14,6 +14,7 @@ extern "C" {
 extern void ui_uiScreenSleep_screen_init(void);
 extern void ui_uiScreenSleep_screen_destroy(void);
 extern lv_obj_t *ui_uiScreenSleep;
+extern lv_obj_t *ui_uiImgBg;
 extern lv_obj_t *ui_uiLabelDate;
 extern lv_obj_t *ui_uiLabelTime;
 extern lv_obj_t *ui_uiLabelCity;
