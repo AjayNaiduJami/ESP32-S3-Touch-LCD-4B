@@ -24,7 +24,7 @@
 #define LCD_BL_PIN 2
 #define BL_PWM_CH  0
 
-#define SLEEP_TIMEOUT_MS 30000
+#define SLEEP_TIMEOUT_MS 3000
 #define GT911_ADDR 0x14 
 
 #define MOTION_THRESHOLD 0.20 
@@ -1963,13 +1963,13 @@ void fetch_weather_data() {
 // Helper function to update the UI
 void update_weather_ui(weather_type_t type, bool is_night) {
     
-    // Safety check: Ensure the screen exists
     if (ui_uiScreenSleep == NULL || ui_uiIconWeather == NULL) return;
+
+    lv_obj_clear_flag(ui_uiIconWeather, LV_OBJ_FLAG_HIDDEN);
 
     const void * new_bg = NULL;
     const void * new_icon = NULL;
 
-    // Logic to select the correct images based on Day/Night and Weather Type
     switch (type) {
         case WEATHER_CLEAR:
             if (is_night) {
@@ -2012,34 +2012,26 @@ void update_weather_ui(weather_type_t type, bool is_night) {
             break;
 
         case WEATHER_THUNDER:
-            // Assuming same background for day/night based on your list
             new_bg = &ui_img_scenes_thunderstorm_png; 
             new_icon = &ui_img_weather_thunder_storm_png;
             break;
 
         case WEATHER_FOG:
             if (is_night) {
-                // You didn't list a "fog_night" scene, reusing cloud or generic night
                 new_bg = &ui_img_scenes_cloud_night_png; 
                 new_icon = &ui_img_weather_night_fog_png;
             } else {
-                // You didn't list a "fog_day" scene, reusing cloud
                 new_bg = &ui_img_scenes_cloud_day_png;   
                 new_icon = &ui_img_weather_day_fog_png;
             }
             break;
             
-        default:
-            return; // Unknown weather, do nothing
+        default: return; 
     }
-
-    // Apply the Background Image
     if (ui_uiImgBg) lv_image_set_src(ui_uiImgBg, new_bg);
-
-    // Apply the Icon Image
-    // Note: We use style_bg_image_src because your icon is a generic Object, not an Image Widget
     lv_obj_set_style_bg_image_src(ui_uiIconWeather, new_icon, LV_PART_MAIN | LV_STATE_DEFAULT);
 }
+
 /* ================= SETUP & LOOP ================= */
 
 void setup() {
