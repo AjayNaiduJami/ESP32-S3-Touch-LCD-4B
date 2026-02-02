@@ -2188,7 +2188,7 @@ void loop() {
           if(ui_uiScreenSleep == NULL) {
               Serial.println("ERROR: ui_uiScreenSleep is NULL! Check ui_init()");
           } else {
-              lv_scr_load_anim(ui_uiScreenSleep, LV_SCR_LOAD_ANIM_FADE_ON, 500, 0, false);
+              lv_scr_load_anim(ui_uiScreenSleep, LV_SCR_LOAD_ANIM_NONE, 0, 0, false);
               ledcWrite(LCD_BL_PIN, BACKLIGHT_DIM_LEVEL);
           }
       }
@@ -2196,7 +2196,7 @@ void loop() {
       // We SHOULD be awake
       if (lv_scr_act() == ui_uiScreenSleep) {
           Serial.println(">>> WAKING UP - SWITCHING TO HOME <<<");
-          lv_scr_load_anim(screen_home, LV_SCR_LOAD_ANIM_FADE_ON, 200, 0, false);
+          lv_scr_load_anim(screen_home, LV_SCR_LOAD_ANIM_NONE, 0, 0, false);
           ledcWrite(LCD_BL_PIN, 200);
           if(msg_popup) { lv_obj_del(msg_popup); msg_popup = NULL; }
       }
