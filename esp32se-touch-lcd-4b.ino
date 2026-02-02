@@ -24,7 +24,7 @@
 #define LCD_BL_PIN 2
 #define BL_PWM_CH  0
 
-#define SLEEP_TIMEOUT_MS 3000
+#define SLEEP_TIMEOUT_MS 30000
 #define GT911_ADDR 0x14 
 
 #define MOTION_THRESHOLD 0.20 
