@@ -970,7 +970,9 @@ void btn_scan_wifi_cb(lv_event_t * e) {
     if(scan_list_ui) {
         lv_obj_clean(scan_list_ui);
         lv_obj_clear_flag(scan_list_ui, LV_OBJ_FLAG_HIDDEN); 
-        lv_list_add_text(scan_list_ui, "Scanning... Please wait");
+        lv_obj_t * txt = lv_list_add_text(scan_list_ui, "Scanning... Please wait");
+        lv_obj_set_style_bg_color(txt, lv_palette_lighten(LV_PALETTE_GREY, 3), 0); 
+        lv_obj_set_style_text_color(txt, lv_color_black(), 0);
     }
     
     current_wifi_state = WIFI_SCANNING;
@@ -1298,7 +1300,7 @@ void create_wifi_screen(lv_obj_t *parent) {
     lv_obj_t *btn_back = lv_btn_create(parent);
     lv_obj_set_size(btn_back, 60, 40);
     lv_obj_align(btn_back, LV_ALIGN_TOP_LEFT, 10, 10);
-    lv_obj_set_style_bg_color(btn_back, lv_palette_lighten(LV_PALETTE_GREY, 3), 0); // Light Grey
+    lv_obj_set_style_bg_color(btn_back, lv_palette_lighten(LV_PALETTE_GREY, 3), 0); 
     lv_obj_set_style_text_color(btn_back, lv_color_black(), 0);
     lv_obj_add_event_cb(btn_back, back_event_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_t *lbl_back = lv_label_create(btn_back);
@@ -1335,12 +1337,14 @@ void create_wifi_screen(lv_obj_t *parent) {
 
     // --- INPUT STYLE HELPER ---
     static lv_style_t style_input;
-    lv_style_init(&style_input);
-    lv_style_set_bg_color(&style_input, lv_color_white());
-    lv_style_set_border_width(&style_input, 1);
-    lv_style_set_border_color(&style_input, lv_palette_main(LV_PALETTE_GREY));
-    lv_style_set_text_color(&style_input, lv_color_black());
-    lv_style_set_radius(&style_input, 8);
+    if(style_input.prop_cnt == 0) {
+        lv_style_init(&style_input);
+        lv_style_set_bg_color(&style_input, lv_color_white());
+        lv_style_set_border_width(&style_input, 1);
+        lv_style_set_border_color(&style_input, lv_palette_main(LV_PALETTE_GREY));
+        lv_style_set_text_color(&style_input, lv_color_black());
+        lv_style_set_radius(&style_input, 8);
+    }
 
     // ROW 1: SSID
     lv_obj_t *lbl_ssid = lv_label_create(cont_wifi_inputs);
@@ -1410,27 +1414,33 @@ void create_wifi_screen(lv_obj_t *parent) {
     lv_obj_set_style_border_color(saved_list_ui, lv_palette_lighten(LV_PALETTE_GREY, 2), 0);
     
     refresh_saved_wifi_list_ui(); 
-
-    // --- POPUPS & KEYBOARD ---
-    // (Note: Scan list styling is handled in the callback, update keyboard style here)
+    
+    // --- SCAN POPUP (The fix) ---
     kb_wifi = lv_keyboard_create(parent);
     lv_obj_set_size(kb_wifi, 480, 220);
     lv_obj_align(kb_wifi, LV_ALIGN_BOTTOM_MID, 0, 0);
-    // Light Theme Keyboard styling is automatic if default theme is applied, 
-    // or manually set BG to white/light grey
     lv_obj_set_style_bg_color(kb_wifi, lv_palette_lighten(LV_PALETTE_GREY, 3), 0);
     lv_obj_add_flag(kb_wifi, LV_OBJ_FLAG_HIDDEN);
-
-    // Create scan list (hidden by default)
     scan_list_ui = lv_list_create(parent); 
     lv_obj_set_size(scan_list_ui, 400, 300);
     lv_obj_align(scan_list_ui, LV_ALIGN_CENTER, 0, 40);
+    
+    // White Background
     lv_obj_set_style_bg_color(scan_list_ui, lv_color_white(), 0); 
-    lv_obj_set_style_border_color(scan_list_ui, lv_palette_main(LV_PALETTE_DEEP_ORANGE), 0);
-    lv_obj_set_style_border_width(scan_list_ui, 2, 0);
-    lv_obj_set_style_shadow_width(scan_list_ui, 50, 0); // Drop shadow
+    lv_obj_set_style_radius(scan_list_ui, 12, 0);
+
+    // Subtle Grey Border (Removed the Red/Orange)
+    lv_obj_set_style_border_color(scan_list_ui, lv_palette_lighten(LV_PALETTE_GREY, 1), 0);
+    lv_obj_set_style_border_width(scan_list_ui, 1, 0);
+    
+    // Drop Shadow
+    lv_obj_set_style_shadow_color(scan_list_ui, lv_palette_main(LV_PALETTE_GREY), 0);
+    lv_obj_set_style_shadow_width(scan_list_ui, 50, 0);
+    lv_obj_set_style_shadow_opa(scan_list_ui, LV_OPA_40, 0);
+
     lv_obj_add_flag(scan_list_ui, LV_OBJ_FLAG_HIDDEN); 
 
+    // --- KEYBOARD ---
     kb_wifi = lv_keyboard_create(parent);
     lv_obj_set_size(kb_wifi, 480, 220);
     lv_obj_align(kb_wifi, LV_ALIGN_BOTTOM_MID, 0, 0);
@@ -2312,18 +2322,27 @@ void loop() {
         if(scan_list_ui) {
             lv_obj_clean(scan_list_ui);
             lv_obj_t * btn_cancel = lv_list_add_btn(scan_list_ui, LV_SYMBOL_CLOSE, " Close");
-            lv_obj_set_style_bg_color(btn_cancel, lv_palette_main(LV_PALETTE_RED), 0); 
+            lv_obj_set_style_bg_color(btn_cancel, lv_palette_lighten(LV_PALETTE_GREY, 3), 0); 
+            lv_obj_set_style_text_color(btn_cancel, lv_color_black(), 0);
             lv_obj_add_event_cb(btn_cancel, [](lv_event_t* e){ wipe_wifi_popup(); }, LV_EVENT_CLICKED, NULL);
 
             if (n == 0) {
-                lv_list_add_text(scan_list_ui, "No networks found");
+                lv_obj_t * txt = lv_list_add_text(scan_list_ui, "No networks found");
+                lv_obj_set_style_text_color(txt, lv_palette_main(LV_PALETTE_GREY), 0);
                 if(lbl_wifi_status) lv_label_set_text(lbl_wifi_status, "Status: None Found");
             } else if (n > 0) {
-                lv_list_add_text(scan_list_ui, "Select Network:");
+                lv_obj_t * txt = lv_list_add_text(scan_list_ui, "Select Network:");
+                lv_obj_set_style_bg_color(txt, lv_palette_lighten(LV_PALETTE_GREY, 3), 0); 
+                lv_obj_set_style_text_color(txt, lv_color_black(), 0);
                 for (int i = 0; i < n; ++i) {
                     String ssidName = WiFi.SSID(i);
                     if(ssidName.length() > 0) {
                         lv_obj_t *btn = lv_list_add_btn(scan_list_ui, LV_SYMBOL_WIFI, ssidName.c_str());
+                        lv_obj_set_style_text_color(btn, lv_color_black(), 0);
+                        lv_obj_set_style_bg_color(btn, lv_palette_lighten(LV_PALETTE_GREY, 3), 0);
+                        lv_obj_set_style_border_side(btn, LV_BORDER_SIDE_BOTTOM, 0);
+                        lv_obj_set_style_border_width(btn, 1, 0);
+                        lv_obj_set_style_border_color(btn, lv_palette_lighten(LV_PALETTE_GREY, 4), 0);
                         lv_obj_add_event_cb(btn, wifi_list_btn_cb, LV_EVENT_CLICKED, NULL);
                     }
                 }
@@ -2332,7 +2351,8 @@ void loop() {
                     lv_obj_set_style_text_color(lbl_wifi_status, lv_palette_main(LV_PALETTE_GREEN), 0);
                 }
             } else {
-                lv_list_add_text(scan_list_ui, "Scan Failed");
+                lv_obj_t * txt = lv_list_add_text(scan_list_ui, "Scan Failed");
+                lv_obj_set_style_text_color(txt, lv_palette_main(LV_PALETTE_RED), 0);
                 if(lbl_wifi_status) lv_label_set_text(lbl_wifi_status, "Status: Error");
             }
         }
@@ -2340,7 +2360,7 @@ void loop() {
         current_wifi_state = WIFI_IDLE; 
         break;
     }
-
+    
     case WIFI_CONNECTING: {
         wl_status_t status = WiFi.status();
         
