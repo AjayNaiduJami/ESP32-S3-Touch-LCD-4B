@@ -7,7 +7,7 @@
 
 lv_obj_t *uic_uiIconWeather;
 lv_obj_t *uic_uiScreenSleep;
-lv_obj_t *ui_uiScreenSleep = NULL;lv_obj_t *ui_uiImgBg = NULL;lv_obj_t *ui_uiLabelDate = NULL;lv_obj_t *ui_uiLabelTime = NULL;lv_obj_t *ui_uiLabelCity = NULL;lv_obj_t *ui_uiPanelAlertsLabel = NULL;lv_obj_t *ui_uiLabelTemp = NULL;lv_obj_t *ui_uiLabelWeather = NULL;lv_obj_t *ui_uiIconWifi = NULL;lv_obj_t *ui_uiIconMqtt = NULL;lv_obj_t *ui_uiIconBat = NULL;lv_obj_t *ui_uiIconWeather = NULL;
+lv_obj_t *ui_uiScreenSleep = NULL;lv_obj_t *ui_uiImgBg = NULL;lv_obj_t *ui_uiIconWeather = NULL;lv_obj_t *ui_uiLabelDate = NULL;lv_obj_t *ui_uiLabelTime = NULL;lv_obj_t *ui_uiLabelCity = NULL;lv_obj_t *ui_uiPanelAlertsLabel = NULL;lv_obj_t *ui_uiLabelTemp = NULL;lv_obj_t *ui_uiLabelWeather = NULL;lv_obj_t *ui_uiIconWifi = NULL;lv_obj_t *ui_uiIconMqtt = NULL;lv_obj_t *ui_uiIconBat = NULL;
 // event funtions
 
 // build funtions
@@ -15,18 +15,27 @@ lv_obj_t *ui_uiScreenSleep = NULL;lv_obj_t *ui_uiImgBg = NULL;lv_obj_t *ui_uiLab
 void ui_uiScreenSleep_screen_init(void)
 {
 ui_uiScreenSleep = lv_obj_create(NULL);
-lv_obj_remove_flag( ui_uiScreenSleep, LV_OBJ_FLAG_SCROLLABLE );    /// Flags
+lv_obj_remove_flag( ui_uiScreenSleep, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_SCROLL_ELASTIC | LV_OBJ_FLAG_SCROLL_MOMENTUM );    /// Flags
 lv_obj_set_style_bg_color(ui_uiScreenSleep, lv_color_hex(0x000000), LV_PART_MAIN | LV_STATE_DEFAULT );
 lv_obj_set_style_bg_opa(ui_uiScreenSleep, 255, LV_PART_MAIN| LV_STATE_DEFAULT);
-lv_obj_set_style_opa(ui_uiScreenSleep, 255, LV_PART_MAIN| LV_STATE_DEFAULT);
 
 ui_uiImgBg = lv_image_create(ui_uiScreenSleep);
 lv_image_set_src(ui_uiImgBg, &ui_img_scenes_clear_day_png);
 lv_obj_set_width( ui_uiImgBg, LV_SIZE_CONTENT);  /// 1
 lv_obj_set_height( ui_uiImgBg, LV_SIZE_CONTENT);   /// 1
 lv_obj_set_align( ui_uiImgBg, LV_ALIGN_CENTER );
-lv_obj_add_flag( ui_uiImgBg, LV_OBJ_FLAG_CLICKABLE );   /// Flags
-lv_obj_remove_flag( ui_uiImgBg, LV_OBJ_FLAG_SCROLLABLE );    /// Flags
+lv_obj_remove_flag( ui_uiImgBg, LV_OBJ_FLAG_PRESS_LOCK | LV_OBJ_FLAG_CLICK_FOCUSABLE | LV_OBJ_FLAG_GESTURE_BUBBLE | LV_OBJ_FLAG_SNAPPABLE | LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_SCROLL_ELASTIC | LV_OBJ_FLAG_SCROLL_MOMENTUM | LV_OBJ_FLAG_SCROLL_CHAIN );    /// Flags
+lv_image_set_scale(ui_uiImgBg,255);
+lv_obj_set_scrollbar_mode(ui_uiImgBg, LV_SCROLLBAR_MODE_OFF);
+
+ui_uiIconWeather = lv_obj_create(ui_uiScreenSleep);
+lv_obj_remove_style_all(ui_uiIconWeather);
+lv_obj_set_width( ui_uiIconWeather, 128);
+lv_obj_set_height( ui_uiIconWeather, 128);
+lv_obj_set_x( ui_uiIconWeather, 30 );
+lv_obj_set_y( ui_uiIconWeather, 50 );
+lv_obj_remove_flag( ui_uiIconWeather, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE );    /// Flags
+lv_obj_set_style_bg_image_src( ui_uiIconWeather, &ui_img_weather_day_png, LV_PART_MAIN | LV_STATE_DEFAULT );
 
 ui_uiLabelDate = lv_label_create(ui_uiScreenSleep);
 lv_obj_set_width( ui_uiLabelDate, LV_SIZE_CONTENT);  /// 1
@@ -117,15 +126,6 @@ lv_label_set_text(ui_uiIconBat,"");
 lv_obj_set_style_text_font(ui_uiIconBat, &lv_font_montserrat_18, LV_PART_MAIN| LV_STATE_DEFAULT);
 lv_obj_set_style_transform_scale(ui_uiIconBat, 300, LV_PART_MAIN| LV_STATE_DEFAULT);
 
-ui_uiIconWeather = lv_obj_create(ui_uiScreenSleep);
-lv_obj_remove_style_all(ui_uiIconWeather);
-lv_obj_set_width( ui_uiIconWeather, 128);
-lv_obj_set_height( ui_uiIconWeather, 128);
-lv_obj_set_x( ui_uiIconWeather, 30 );
-lv_obj_set_y( ui_uiIconWeather, 50 );
-lv_obj_remove_flag( ui_uiIconWeather, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE );    /// Flags
-lv_obj_set_style_bg_image_src( ui_uiIconWeather, &ui_img_weather_day_png, LV_PART_MAIN | LV_STATE_DEFAULT );
-
 uic_uiScreenSleep = ui_uiScreenSleep;
 uic_uiIconWeather = ui_uiIconWeather;
 
@@ -139,6 +139,8 @@ void ui_uiScreenSleep_screen_destroy(void)
 uic_uiScreenSleep= NULL;
 ui_uiScreenSleep= NULL;
 ui_uiImgBg= NULL;
+uic_uiIconWeather= NULL;
+ui_uiIconWeather= NULL;
 ui_uiLabelDate= NULL;
 ui_uiLabelTime= NULL;
 ui_uiLabelCity= NULL;
@@ -148,7 +150,5 @@ ui_uiLabelWeather= NULL;
 ui_uiIconWifi= NULL;
 ui_uiIconMqtt= NULL;
 ui_uiIconBat= NULL;
-uic_uiIconWeather= NULL;
-ui_uiIconWeather= NULL;
 
 }
