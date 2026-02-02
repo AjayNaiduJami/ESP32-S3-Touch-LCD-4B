@@ -728,30 +728,40 @@ void clear_all_event_cb(lv_event_t *e) {
 }
 
 void refresh_notification_list() {
-  if (!notification_list) return;
-  lv_obj_clean(notification_list); 
-  int count = get_notification_count();
-  if (count == 0) {
-    lv_obj_add_flag(notification_list, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_clear_flag(no_notification_label, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_flag(btn_clear_all, LV_OBJ_FLAG_HIDDEN); 
-  } else {
-    lv_obj_clear_flag(notification_list, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_flag(no_notification_label, LV_OBJ_FLAG_HIDDEN);
-    if(count >= 2) lv_obj_clear_flag(btn_clear_all, LV_OBJ_FLAG_HIDDEN);
-    else lv_obj_add_flag(btn_clear_all, LV_OBJ_FLAG_HIDDEN);
-    for(int i = 0; i < MAX_NOTIFICATIONS; i++) {
-      if (notification_history[i][0] != '\0') {
-        lv_obj_t *btn = lv_list_add_btn(notification_list, LV_SYMBOL_BELL, notification_history[i]);
-        lv_obj_add_flag(btn, LV_OBJ_FLAG_CLICKABLE); 
-        lv_obj_add_event_cb(btn, list_item_clicked_cb, LV_EVENT_CLICKED, (void*)(intptr_t)i);
-        lv_obj_set_style_text_color(btn, lv_color_white(), 0);
-        lv_obj_set_style_bg_color(btn, lv_palette_darken(LV_PALETTE_BLUE_GREY, 3), 0);
-        lv_obj_set_style_border_color(btn, lv_color_white(), 0);
-        lv_obj_set_style_border_width(btn, 1, 0);
-      }
+    if (!notification_list) return;
+    lv_obj_clean(notification_list); 
+    
+    int count = get_notification_count();
+    
+    if (count == 0) {
+        lv_obj_add_flag(notification_list, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(no_notification_label, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(btn_clear_all, LV_OBJ_FLAG_HIDDEN); 
+    } else {
+        lv_obj_clear_flag(notification_list, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(no_notification_label, LV_OBJ_FLAG_HIDDEN);
+        if(count >= 2) {
+            lv_obj_clear_flag(btn_clear_all, LV_OBJ_FLAG_HIDDEN);
+        } else {
+            lv_obj_add_flag(btn_clear_all, LV_OBJ_FLAG_HIDDEN);
+        }
+
+        for(int i = 0; i < MAX_NOTIFICATIONS; i++) {
+            if (notification_history[i][0] != '\0') {
+                lv_obj_t *btn = lv_list_add_btn(notification_list, LV_SYMBOL_BELL, notification_history[i]);
+                lv_obj_set_style_bg_color(btn, lv_palette_lighten(LV_PALETTE_GREY, 4), 0); 
+                lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, 0);
+                lv_obj_set_style_text_color(btn, lv_color_black(), 0);
+                lv_obj_set_style_text_font(btn, &lv_font_montserrat_16, 0);
+                lv_obj_set_style_radius(btn, 10, 0);
+                lv_obj_set_style_border_width(btn, 1, 0);
+                lv_obj_set_style_border_color(btn, lv_palette_lighten(LV_PALETTE_GREY, 2), 0);
+                lv_obj_set_style_border_side(btn, (lv_border_side_t)(LV_BORDER_SIDE_LEFT | LV_BORDER_SIDE_BOTTOM | LV_BORDER_SIDE_TOP | LV_BORDER_SIDE_RIGHT), 0);
+                lv_obj_add_flag(btn, LV_OBJ_FLAG_CLICKABLE); 
+                lv_obj_add_event_cb(btn, list_item_clicked_cb, LV_EVENT_CLICKED, (void*)(intptr_t)i);
+            }
+        }
     }
-  }
 }
 
 /* ================= MQTT CALLBACKS ================= */
@@ -827,7 +837,7 @@ void create_page_dots(lv_obj_t *parent, int active_idx) {
         lv_obj_set_size(dot, 8, 8);
         lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
         if(i == active_idx) {
-            lv_obj_set_style_bg_color(dot, lv_palette_main(LV_PALETTE_ORANGE), 0);
+            lv_obj_set_style_bg_color(dot, lv_color_black(), 0);
             lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, 0);
         } else {
             lv_obj_set_style_bg_color(dot, lv_palette_main(LV_PALETTE_GREY), 0);
@@ -1207,45 +1217,51 @@ void create_power_screen(lv_obj_t *parent) {
 }
 
 void create_notifications_page(lv_obj_t *parent) {
-  lv_obj_set_style_bg_color(parent, lv_color_black(), 0);
-  create_page_dots(parent, 0);
+    lv_obj_set_style_bg_color(parent, lv_color_white(), 0);
+    create_page_dots(parent, 0);
 
-  lv_obj_t *title = lv_label_create(parent);
-  lv_label_set_text(title, "Notifications");
-  lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
-  lv_obj_set_style_text_color(title, lv_palette_main(LV_PALETTE_ORANGE), 0);
-  lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 30);
+    lv_obj_t *title = lv_label_create(parent);
+    lv_label_set_text(title, "Notifications");
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(title, lv_palette_main(LV_PALETTE_DEEP_ORANGE), 0); 
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 30); 
 
-  btn_clear_all = lv_btn_create(parent);
-  lv_obj_set_size(btn_clear_all, 80, 30);
-  lv_obj_align(btn_clear_all, LV_ALIGN_TOP_RIGHT, -20, 60); 
-  lv_obj_set_style_bg_color(btn_clear_all, lv_palette_main(LV_PALETTE_RED), 0);
-  lv_obj_add_event_cb(btn_clear_all, clear_all_event_cb, LV_EVENT_CLICKED, NULL);
-  lv_obj_add_flag(btn_clear_all, LV_OBJ_FLAG_HIDDEN); 
+    btn_clear_all = lv_btn_create(parent);
+    lv_obj_set_size(btn_clear_all, 80, 30);
+    lv_obj_align(btn_clear_all, LV_ALIGN_TOP_RIGHT, -20, 60);
+    lv_obj_set_style_bg_color(btn_clear_all, lv_palette_main(LV_PALETTE_RED), 0);
+    lv_obj_set_style_shadow_width(btn_clear_all, 0, 0);
+    lv_obj_add_event_cb(btn_clear_all, clear_all_event_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_flag(btn_clear_all, LV_OBJ_FLAG_HIDDEN);
 
-  lv_obj_t *lbl_ca = lv_label_create(btn_clear_all);
-  lv_label_set_text(lbl_ca, "Clear All");
-  lv_obj_center(lbl_ca);
+    lv_obj_t *lbl_ca = lv_label_create(btn_clear_all);
+    lv_label_set_text(lbl_ca, "Clear All");
+    lv_obj_set_style_text_color(lbl_ca, lv_color_white(), 0);
+    lv_obj_center(lbl_ca);
 
-  no_notification_label = lv_label_create(parent);
-  lv_label_set_text(no_notification_label, "No Notifications");
-  lv_obj_set_style_text_font(no_notification_label, &lv_font_montserrat_24, 0);
-  lv_obj_set_style_text_color(no_notification_label, lv_palette_darken(LV_PALETTE_GREY, 2), 0);
-  lv_obj_align(no_notification_label, LV_ALIGN_CENTER, 0, 0);
+    // 5. Empty State Label (Dark Text for Light BG)
+    no_notification_label = lv_label_create(parent);
+    lv_label_set_text(no_notification_label, "No New Alerts");
+    lv_obj_set_style_text_font(no_notification_label, &lv_font_montserrat_24, 0);
+    lv_obj_set_style_text_color(no_notification_label, lv_palette_lighten(LV_PALETTE_GREY, 1), 0);
+    lv_obj_align(no_notification_label, LV_ALIGN_CENTER, 0, 20);
 
-  notification_list = lv_list_create(parent);
-  lv_obj_set_size(notification_list, 420, 320); 
-  lv_obj_align(notification_list, LV_ALIGN_TOP_MID, 0, 100); 
-  lv_obj_set_style_bg_opa(notification_list, LV_OPA_TRANSP, 0); 
-  lv_obj_set_style_border_width(notification_list, 0, 0);
+    // 6. The List Container
+    notification_list = lv_list_create(parent);
+    lv_obj_set_size(notification_list, 460, 340); 
+    lv_obj_align(notification_list, LV_ALIGN_TOP_MID, 0, 100);
+    lv_obj_set_style_bg_opa(notification_list, LV_OPA_TRANSP, 0); 
+    lv_obj_set_style_border_width(notification_list, 0, 0);
+    lv_obj_set_style_pad_row(notification_list, 10, 0); 
+    lv_obj_set_style_pad_all(notification_list, 5, 0);
 
-  refresh_notification_list();
+    refresh_notification_list();
 
-  lv_obj_t *hint = lv_label_create(parent);
-  lv_label_set_text(hint, "Swipe Left for Home " LV_SYMBOL_LEFT);
-  lv_obj_set_style_text_color(hint, lv_palette_darken(LV_PALETTE_GREY, 1), 0);
-  lv_obj_set_style_text_font(hint, &lv_font_montserrat_16, 0);
-  lv_obj_align(hint, LV_ALIGN_BOTTOM_MID, 0, -20);
+    lv_obj_t *hint = lv_label_create(parent);
+    lv_label_set_text(hint, "Swipe Left for Home " LV_SYMBOL_LEFT);
+    lv_obj_set_style_text_color(hint, lv_palette_lighten(LV_PALETTE_GREY, 1), 0);
+    lv_obj_set_style_text_font(hint, &lv_font_montserrat_14, 0);
+    lv_obj_align(hint, LV_ALIGN_BOTTOM_MID, 0, -20);
 }
 
 void create_wifi_screen(lv_obj_t *parent) {
