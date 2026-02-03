@@ -259,7 +259,6 @@ void saved_wifi_click_cb(lv_event_t * e);
 void btn_scan_wifi_cb(lv_event_t * e);
 void wifi_list_btn_cb(lv_event_t * e);
 
-
 /* ================= HARDWARE DRIVERS ================= */
 bool gt911_read_touch(uint16_t &x, uint16_t &y) {
   Wire.beginTransmission(GT911_ADDR);
@@ -448,14 +447,11 @@ void refresh_saved_wifi_list_ui() {
     for(int i=0; i<MAX_SAVED_NETWORKS; i++) {
         if(saved_networks[i].valid) {
             lv_obj_t *btn = lv_list_add_btn(saved_list_ui, LV_SYMBOL_WIFI, saved_networks[i].ssid);
-            
-            // White/Light Theme Styling for Wifi Items
             lv_obj_set_style_bg_color(btn, lv_color_white(), 0);
             lv_obj_set_style_text_color(btn, lv_color_black(), 0);
             lv_obj_set_style_border_side(btn, LV_BORDER_SIDE_BOTTOM, 0);
             lv_obj_set_style_border_width(btn, 1, 0);
             lv_obj_set_style_border_color(btn, lv_palette_lighten(LV_PALETTE_GREY, 3), 0);
-            
             lv_obj_add_event_cb(btn, saved_wifi_click_cb, LV_EVENT_CLICKED, NULL);
         }
     }
