@@ -106,9 +106,9 @@ This project requires specific driver libraries provided by Waveshare to functio
 | **PSRAM** | **OPI PSRAM** (Crucial for 480x480 Display) |
 | **Upload Speed** | 921600 |
 
-### 💾 Partitions Configuration (`partitions.csv`)
+### 💾 Partitions Configuration
 
-Due to the large size of the GUI assets, the default ESP32 partition scheme is insufficient. Created partition file to allocate 10MB for the application, ensuring enough space for LVGL images.
+Due to the large size of the GUI assets, the default ESP32 partition scheme is insufficient. Created [partitions](partitions.csv) file to allocate 10MB for the application, ensuring enough space for LVGL images.
 
 
 ### 🔗 MQTT Configuration (Home Assistant)
@@ -138,6 +138,38 @@ To send a notification to the panel from Home Assistant, publish a message to th
 
 ---
 
+### 🎨 [Assets](assets/) & UI Resources
+
+The project includes an `assets` folder containing the graphical elements used to design the interface in SquareLine Studio. These images are compiled directly into the source code (referenced in `ui.h`) during the export process.
+
+### Folder Structure
+
+```text
+assets/
+├── scenes/   # Background PNGs used for the Screensaver (Sleep Screen)
+│   ├── clear_day.png
+│   ├── clear_night.png
+│   ├── rain_day.png
+│   ├── snow_night.png
+│   └── ... (Dynamic backgrounds based on weather conditions)
+│
+└── weather/  # PNG Icons representing specific weather statuses
+    ├── weather_day.png
+    ├── weather_cloudy.png
+    ├── weather_rain.png
+    ├── weather_storm.png
+    └── ... (Icons updated via Open-Meteo API data)
+
+```
+
+### Integration Note
+
+In **SquareLine Studio**, these assets were imported to create the image widgets (`ui_uiImgBg` and `ui_uiIconWeather`). The C array definitions for these images are automatically generated in the exported `ui_img_...c` files, allowing the ESP32 to render them without an external SD card.
+
+*Images used in screensaver backdrop are generaed using Google Gemini*
+
+---
+
 ## 📝 Credits & References
 
 * **Board Manufacturer:** [Waveshare](https://www.waveshare.com/)
@@ -145,5 +177,3 @@ To send a notification to the panel from Home Assistant, publish a message to th
 * **Graphics Library:** [LVGL](https://lvgl.io/)
 * **Weather Data:** [Open-Meteo](https://open-meteo.com/)
 * **Location Data:** [IP-API](https://ip-api.com/)
-
-*Images used in screensaver backdrop are generaed using Google Gemini*
