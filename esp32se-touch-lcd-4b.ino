@@ -21,10 +21,14 @@
 #define SWITCH_COUNT 9
 #define GRID_COLS 3
 
+// If Pin 2 doesn't work, try changing this to 1.
 #define LCD_BL_PIN 2
 #define BL_PWM_CH  0
 
-#define SLEEP_TIMEOUT_MS 30000
+// TIMEOUTS
+#define SCREENSAVER_TIMEOUT_MS 30000   // 30 Secs -> Show Sleep Screen
+#define SLEEP_TIMEOUT_MS       60000   // 60 Secs -> Turn Backlight OFF
+
 #define GT911_ADDR 0x14 
 
 #define MOTION_THRESHOLD 0.20 
@@ -32,8 +36,6 @@
 #define MAX_SAVED_NETWORKS 5
 #define WIFI_RECONNECT_INTERVAL 60000
 #define BACKLIGHT_DIM_LEVEL 10
-
-const char* TOPIC_NOTIFY = "ha/panel/notify";
 
 /* ================= STRUCTS & ENUMS ================= */
 
@@ -140,7 +142,9 @@ char mqtt_pass[32] = "";
 bool mqtt_enabled = false; 
 int  mqtt_retry_count = 0; 
 uint32_t last_mqtt_retry = 0;
+char mqtt_topic_notify[64] = "ha/panel/notify";
 
+lv_obj_t *ta_mqtt_topic;
 lv_obj_t *cont_ha_inputs; 
 lv_obj_t *ta_mqtt_host;
 lv_obj_t *ta_mqtt_port;
@@ -482,6 +486,7 @@ void load_settings() {
   
   String s = prefs.getString("dev_name", "ESP32-S3-Panel");
   s.toCharArray(deviceName, 32);
+  WiFi.setHostname(deviceName);
 
   String ss = prefs.getString("wifi_ssid", "");
   ss.toCharArray(wifi_ssid, 32);
@@ -497,6 +502,8 @@ void load_settings() {
   mu.toCharArray(mqtt_user, 32);
   String mp = prefs.getString("mqtt_pass", "");
   mp.toCharArray(mqtt_pass, 32);
+  String mt = prefs.getString("mqtt_topic", "ha/panel/notify");
+  mt.toCharArray(mqtt_topic_notify, 64);
   
   mqtt_enabled = prefs.getBool("mqtt_en", false);
   ntp_auto_update = prefs.getBool("ntp_auto", true);
@@ -511,6 +518,7 @@ void save_device_name(const char* new_name) {
   prefs.putString("dev_name", new_name);
   prefs.end();
   snprintf(deviceName, 32, "%s", new_name);
+  WiFi.setHostname(deviceName);
 }
 
 // --- LOADER HELPERS ---
@@ -545,12 +553,13 @@ void hide_loader() {
 }
 // ------------------------
 
-void save_ha_settings(const char* h, const char* p_str, const char* u, const char* p, bool en) {
+void save_ha_settings(const char* h, const char* p_str, const char* u, const char* p, const char* topic, bool en) {
   prefs.begin("sys_config", false);
   prefs.putString("mqtt_host", h);
   prefs.putInt("mqtt_port", atoi(p_str));
   prefs.putString("mqtt_user", u);
   prefs.putString("mqtt_pass", p);
+  prefs.putString("mqtt_topic", topic);
   prefs.putBool("mqtt_en", en);
   prefs.end();
 
@@ -558,11 +567,12 @@ void save_ha_settings(const char* h, const char* p_str, const char* u, const cha
   mqtt_port = atoi(p_str);
   snprintf(mqtt_user, 32, "%s", u);
   snprintf(mqtt_pass, 32, "%s", p);
+  snprintf(mqtt_topic_notify, 64, "%s", topic);
   
   if (en) {
       show_loader();
       lv_timer_handler(); 
-      delay(50);         
+      delay(50);          
 
       mqtt.setServer(mqtt_host, mqtt_port);
       wifiClient.setTimeout(2000); 
@@ -584,7 +594,7 @@ void save_ha_settings(const char* h, const char* p_str, const char* u, const cha
               lv_obj_set_style_text_color(lbl_ha_status, lv_palette_main(LV_PALETTE_GREEN), 0);
           }
           for(int i=0; i<SWITCH_COUNT; i++) mqtt.subscribe(switches[i].topic_state);
-          mqtt.subscribe(TOPIC_NOTIFY);
+          mqtt.subscribe(mqtt_topic_notify);
       } else {
           mqtt_enabled = false; 
           if(sw_mqtt_enable) lv_obj_clear_state(sw_mqtt_enable, LV_STATE_CHECKED);
@@ -808,7 +818,7 @@ void mqtt_callback(char* topic, byte* payload, unsigned int len) {
       }
     }
   }
-  if (strcmp(topic, TOPIC_NOTIFY) == 0) {
+  if (strcmp(topic, mqtt_topic_notify) == 0) {
     if (msg.length() > 0) add_notification(msg);
   } 
 }
@@ -834,7 +844,7 @@ void mqtt_reconnect() {
   if (connected) {
     mqtt_retry_count = 0; 
     for(int i=0; i<SWITCH_COUNT; i++) mqtt.subscribe(switches[i].topic_state);
-    mqtt.subscribe(TOPIC_NOTIFY);
+    mqtt.subscribe(mqtt_topic_notify);
     
     Serial.println("MQTT Connected!");
   } else {
@@ -1144,6 +1154,7 @@ void btn_save_ha_cb(lv_event_t * e) {
     const char* port = lv_textarea_get_text(ta_mqtt_port);
     const char* u = lv_textarea_get_text(ta_mqtt_user);
     const char* p = lv_textarea_get_text(ta_mqtt_pass);
+    const char* t = lv_textarea_get_text(ta_mqtt_topic);
     
     bool en = lv_obj_has_state(sw_mqtt_enable, LV_STATE_CHECKED);
     
@@ -1152,7 +1163,7 @@ void btn_save_ha_cb(lv_event_t * e) {
         show_notification_popup("Error: WiFi is Disabled", -1);
     }
     
-    save_ha_settings(h, port, u, p, en);
+    save_ha_settings(h, port, u, p, t, en);
     lv_obj_add_flag(kb_ha, LV_OBJ_FLAG_HIDDEN);
 }
 
@@ -1201,6 +1212,7 @@ void settings_menu_event_cb(lv_event_t *e) {
                 lv_textarea_set_text(ta_mqtt_port, p_buf);
                 lv_textarea_set_text(ta_mqtt_user, mqtt_user);
                 lv_textarea_set_text(ta_mqtt_pass, mqtt_pass);
+                lv_textarea_set_text(ta_mqtt_topic, mqtt_topic_notify);
             } else {
                 lv_obj_clear_state(sw_mqtt_enable, LV_STATE_CHECKED);
                 lv_obj_add_flag(cont_ha_inputs, LV_OBJ_FLAG_HIDDEN);
@@ -1478,12 +1490,13 @@ void create_ha_screen(lv_obj_t *parent) {
 
     sw_mqtt_enable = lv_switch_create(parent);
     lv_obj_set_size(sw_mqtt_enable, 50, 25);
-    lv_obj_align(sw_mqtt_enable, LV_ALIGN_TOP_RIGHT, -20, 60); 
+    lv_obj_align(sw_mqtt_enable, LV_ALIGN_TOP_RIGHT, -20, 60);
     lv_obj_add_event_cb(sw_mqtt_enable, sw_ha_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
     if(mqtt_enabled) lv_obj_add_state(sw_mqtt_enable, LV_STATE_CHECKED);
+
     lv_obj_t *lbl_en = lv_label_create(parent);
     lv_label_set_text(lbl_en, "Enable:");
-    lv_obj_set_style_text_color(lbl_en, lv_color_black(), 0);
+    lv_obj_set_style_text_color(lbl_en, lv_palette_main(LV_PALETTE_GREY), 0);
     lv_obj_align(lbl_en, LV_ALIGN_TOP_RIGHT, -80, 65);
 
     cont_ha_inputs = lv_obj_create(parent);
@@ -1492,12 +1505,12 @@ void create_ha_screen(lv_obj_t *parent) {
     lv_obj_set_style_bg_opa(cont_ha_inputs, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(cont_ha_inputs, 0, 0);
     lv_obj_clear_flag(cont_ha_inputs, LV_OBJ_FLAG_SCROLLABLE);
-    
+
     if(!mqtt_enabled) lv_obj_add_flag(cont_ha_inputs, LV_OBJ_FLAG_HIDDEN);
 
     // Style
     static lv_style_t style_input;
-    if(style_input.prop_cnt == 0) { // Init once
+    if(style_input.prop_cnt == 0) {
         lv_style_init(&style_input);
         lv_style_set_bg_color(&style_input, lv_color_white());
         lv_style_set_border_width(&style_input, 1);
@@ -1506,7 +1519,7 @@ void create_ha_screen(lv_obj_t *parent) {
         lv_style_set_radius(&style_input, 8);
     }
 
-    // HOST
+    // ROW 1: HOST & PORT
     lv_obj_t *lbl_host = lv_label_create(cont_ha_inputs);
     lv_label_set_text(lbl_host, "Host:");
     lv_obj_set_style_text_color(lbl_host, lv_palette_main(LV_PALETTE_GREY), 0);
@@ -1534,7 +1547,7 @@ void create_ha_screen(lv_obj_t *parent) {
     lv_obj_align(ta_mqtt_port, LV_ALIGN_TOP_LEFT, 350, 5);
     lv_obj_add_event_cb(ta_mqtt_port, ha_ta_event_cb, LV_EVENT_ALL, NULL);
 
-    // USER
+    // ROW 2: USER & PASS
     lv_obj_t *lbl_user = lv_label_create(cont_ha_inputs);
     lv_label_set_text(lbl_user, "User:");
     lv_obj_set_style_text_color(lbl_user, lv_palette_main(LV_PALETTE_GREY), 0);
@@ -1543,12 +1556,11 @@ void create_ha_screen(lv_obj_t *parent) {
     ta_mqtt_user = lv_textarea_create(cont_ha_inputs);
     lv_textarea_set_text(ta_mqtt_user, mqtt_user);
     lv_textarea_set_one_line(ta_mqtt_user, true);
-    lv_obj_set_width(ta_mqtt_user, 160); // Half width roughly
+    lv_obj_set_width(ta_mqtt_user, 160);
     lv_obj_add_style(ta_mqtt_user, &style_input, 0);
     lv_obj_align(ta_mqtt_user, LV_ALIGN_TOP_LEFT, 60, 65);
     lv_obj_add_event_cb(ta_mqtt_user, ha_ta_event_cb, LV_EVENT_ALL, NULL);
 
-    // Pass
     lv_obj_t *lbl_pass = lv_label_create(cont_ha_inputs);
     lv_label_set_text(lbl_pass, "Pass:");
     lv_obj_set_style_text_color(lbl_pass, lv_palette_main(LV_PALETTE_GREY), 0);
@@ -1558,21 +1570,35 @@ void create_ha_screen(lv_obj_t *parent) {
     lv_textarea_set_text(ta_mqtt_pass, mqtt_pass);
     lv_textarea_set_password_mode(ta_mqtt_pass, true);
     lv_textarea_set_one_line(ta_mqtt_pass, true);
-    lv_obj_set_width(ta_mqtt_pass, 160); // Half width roughly
+    lv_obj_set_width(ta_mqtt_pass, 160);
     lv_obj_add_style(ta_mqtt_pass, &style_input, 0);
     lv_obj_align(ta_mqtt_pass, LV_ALIGN_TOP_LEFT, 280, 65);
     lv_obj_add_event_cb(ta_mqtt_pass, ha_ta_event_cb, LV_EVENT_ALL, NULL);
 
-    // STATUS
+    // --- ROW 3: NOTIFICATION TOPIC (New Section) ---
+    lv_obj_t *lbl_topic = lv_label_create(cont_ha_inputs);
+    lv_label_set_text(lbl_topic, "Notify Topic:");
+    lv_obj_set_style_text_color(lbl_topic, lv_palette_main(LV_PALETTE_GREY), 0);
+    lv_obj_align(lbl_topic, LV_ALIGN_TOP_LEFT, 10, 125);
+
+    ta_mqtt_topic = lv_textarea_create(cont_ha_inputs);
+    lv_textarea_set_text(ta_mqtt_topic, mqtt_topic_notify);
+    lv_textarea_set_one_line(ta_mqtt_topic, true);
+    lv_obj_set_width(ta_mqtt_topic, 320);
+    lv_obj_add_style(ta_mqtt_topic, &style_input, 0);
+    lv_obj_align(ta_mqtt_topic, LV_ALIGN_TOP_LEFT, 120, 115);
+    lv_obj_add_event_cb(ta_mqtt_topic, ha_ta_event_cb, LV_EVENT_ALL, NULL);
+
+    // ROW 4: STATUS (Pushed down)
     lbl_ha_status = lv_label_create(cont_ha_inputs);
     lv_label_set_text(lbl_ha_status, "Status: Not Connected");
     lv_obj_set_style_text_color(lbl_ha_status, lv_palette_darken(LV_PALETTE_GREY, 2), 0);
-    lv_obj_align(lbl_ha_status, LV_ALIGN_TOP_LEFT, 10, 125);
+    lv_obj_align(lbl_ha_status, LV_ALIGN_TOP_LEFT, 10, 165); 
 
     // SAVE BTN
     lv_obj_t *btn_save = lv_btn_create(cont_ha_inputs);
     lv_obj_set_size(btn_save, 140, 45);
-    lv_obj_align(btn_save, LV_ALIGN_BOTTOM_MID, 0, -10); 
+    lv_obj_align(btn_save, LV_ALIGN_BOTTOM_MID, 0, -10);
     lv_obj_set_style_bg_color(btn_save, lv_palette_main(LV_PALETTE_GREEN), 0);
     lv_obj_add_event_cb(btn_save, btn_save_ha_cb, LV_EVENT_CLICKED, NULL);
     
@@ -1580,6 +1606,7 @@ void create_ha_screen(lv_obj_t *parent) {
     lv_label_set_text(lbl_save, "Save Settings");
     lv_obj_center(lbl_save);
 
+    // KEYBOARD
     kb_ha = lv_keyboard_create(parent);
     lv_obj_set_size(kb_ha, 480, 220);
     lv_obj_align(kb_ha, LV_ALIGN_BOTTOM_MID, 0, 0);
@@ -1593,6 +1620,7 @@ void create_ha_screen(lv_obj_t *parent) {
             lv_obj_clear_state(ta_mqtt_port, LV_STATE_FOCUSED);
             lv_obj_clear_state(ta_mqtt_user, LV_STATE_FOCUSED);
             lv_obj_clear_state(ta_mqtt_pass, LV_STATE_FOCUSED);
+            lv_obj_clear_state(ta_mqtt_topic, LV_STATE_FOCUSED); // Clear topic focus
         }
     }, LV_EVENT_ALL, NULL);
 }
@@ -2139,6 +2167,15 @@ void update_weather_ui(weather_type_t type, bool is_night) {
     lv_obj_set_style_bg_image_src(ui_uiIconWeather, new_icon, LV_PART_MAIN | LV_STATE_DEFAULT);
 }
 
+void setBacklight(bool on) {
+    // The backlight is connected to the IO Expander, not the ESP32 directly.
+    // We use the 'expander' object created for the display.
+    if(expander) {
+        expander->pinMode(LCD_BL_PIN, OUTPUT);
+        expander->digitalWrite(LCD_BL_PIN, on ? HIGH : LOW);
+    }
+}
+
 /* ================= SETUP & LOOP ================= */
 
 void setup() {
@@ -2164,9 +2201,13 @@ void setup() {
 
   gfx->begin();
   gfx->fillScreen(RGB565_BLACK);
-  ledcAttach(LCD_BL_PIN, 5000, 8);
-  ledcWrite(LCD_BL_PIN, 200);
-
+  // --- REPLACED PWM BACKLIGHT SETUP ---
+  // ledcAttach(LCD_BL_PIN, 5000, 8);  <-- REMOVED
+  // ledcWrite(LCD_BL_PIN, 200);       <-- REMOVED
+  
+  // Turn Backlight ON using Expander
+  setBacklight(true);
+  
   lv_init();
   lv_tick_set_cb([]{ return millis(); });
 
@@ -2286,27 +2327,39 @@ void loop() {
   unsigned long now = millis();
   unsigned long diff = now - last_touch_ms;
 
+  // STATE A: DEEP SLEEP (Display OFF)
   if (diff > SLEEP_TIMEOUT_MS) {
-      // We SHOULD be in sleep mode
+      // 1 minute passed: Turn OFF Backlight
+      setBacklight(false);
+      
+      // Stay on sleep screen logic internally so it's ready when we wake
+      if (lv_scr_act() != ui_uiScreenSleep && ui_uiScreenSleep != NULL) {
+        Serial.println(">>> ENTERING SLEEP SCREEN MODE <<<");
+           lv_scr_load_anim(ui_uiScreenSleep, LV_SCR_LOAD_ANIM_NONE, 0, 0, false);
+      }
+  } 
+  // STATE B: SCREENSAVER (Sleep Screen, Backlight ON)
+  else if (diff > SCREENSAVER_TIMEOUT_MS) {
+      // 30 seconds passed: Show Sleep Screen (Screensaver)
       if (lv_scr_act() != ui_uiScreenSleep) {
-          Serial.println(">>> SWITCHING TO SLEEP SCREEN NOW <<<");
-          
-          // Ensure the object exists before switching
-          if(ui_uiScreenSleep == NULL) {
-              Serial.println("ERROR: ui_uiScreenSleep is NULL! Check ui_init()");
-          } else {
-              lv_scr_load_anim(ui_uiScreenSleep, LV_SCR_LOAD_ANIM_NONE, 0, 0, false);
-              ledcWrite(LCD_BL_PIN, BACKLIGHT_DIM_LEVEL);
+          Serial.println(">>> ENTERING SCREENSAVER MODE <<<");
+          if(ui_uiScreenSleep != NULL) {
+              lv_scr_load_anim(ui_uiScreenSleep, LV_SCR_LOAD_ANIM_FADE_ON, 500, 0, false);
           }
       }
-  } else {
-      // We SHOULD be awake
+      // Ensure Backlight is ON (we can't dim, so we keep it ON)
+      setBacklight(true);
+  } 
+  // STATE C: ACTIVE (Home Screen, Backlight ON)
+  else {
+      // Less than 30s: Show Home Screen
       if (lv_scr_act() == ui_uiScreenSleep) {
-          Serial.println(">>> WAKING UP - SWITCHING TO HOME <<<");
-          lv_scr_load_anim(screen_home, LV_SCR_LOAD_ANIM_NONE, 0, 0, false);
-          ledcWrite(LCD_BL_PIN, 200);
+          Serial.println(">>> WAKING UP <<<");
+          lv_scr_load_anim(screen_home, LV_SCR_LOAD_ANIM_FADE_ON, 200, 0, false);
           if(msg_popup) { lv_obj_del(msg_popup); msg_popup = NULL; }
       }
+      // Ensure Backlight is ON
+      setBacklight(true);
   }
 
   switch (current_wifi_state) {
@@ -2482,7 +2535,7 @@ void loop() {
                     Serial.println("MQTT Success!");
                     mqtt_retry_count = 0; 
                     for(int i=0; i<SWITCH_COUNT; i++) mqtt.subscribe(switches[i].topic_state);
-                    mqtt.subscribe(TOPIC_NOTIFY);
+                    mqtt.subscribe(mqtt_topic_notify);
                 }
             }
         }
