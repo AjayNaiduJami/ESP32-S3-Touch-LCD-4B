@@ -170,6 +170,64 @@ In **SquareLine Studio**, these assets were imported to create the image widgets
 
 ---
 
+## Project Gallery
+
+<table align="center">
+  <tr>
+    <td align="center">
+      <img src="docs/screenshots/nodata_screen.png" width="220"/><br/>
+      <sub>NoData Screen</sub>
+    </td>
+    <td align="center">
+      <img src="docs/screenshots/screensaver.jpeg" width="220"/><br/>
+      <sub>Screen Saver</sub>
+    </td>
+    <td align="center">
+      <img src="docs/screenshots/settings_home.jpeg" width="220"/><br/>
+      <sub>Settings Page</sub>
+    </td>
+    <td align="center">
+      <img src="docs/screenshots/housing.jpeg" width="220"/><br/>
+      <sub>Housing</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="docs/screenshots/HA_screen.jpeg" width="220"/><br/>
+      <sub>HA Screen</sub>
+    </td>
+    <td align="center">
+      <img src="docs/screenshots/notifications.jpeg" width="220"/><br/>
+      <sub>Notifications Screen</sub>
+    </td>
+    <td align="center">
+      <img src="docs/screenshots/wifi_settings.jpeg" width="220"/><br/>
+      <sub>WiFi Settings</sub>
+    </td>
+    <td align="center">
+      <img src="docs/screenshots/HA_settings.jpeg" width="220"/><br/>
+      <sub>HA Settings</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="docs/screenshots/date_time.jpeg" width="220"/><br/>
+      <sub>Date/Time Screen</sub>
+    </td>
+    <td align="center">
+      <img src="docs/screenshots/system_status.jpeg" width="220"/><br/>
+      <sub>System Status</sub>
+    </td>
+     <td align="center">
+      <img src="docs/screenshots/about.jpeg" width="220"/><br/>
+      <sub>About Page</sub>
+    </td>
+  </tr>
+</table>
+
+
+---
+
 ## 📝 Credits & References
 
 * **Board Manufacturer:** [Waveshare](https://www.waveshare.com/)
