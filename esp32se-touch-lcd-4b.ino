@@ -2327,31 +2327,46 @@ void loop() {
   unsigned long now = millis();
   unsigned long diff = now - last_touch_ms;
 
+  // Track state to prevent spamming Serial
+  static bool is_deep_sleep = false;
+
   // STATE A: DEEP SLEEP (Display OFF)
   if (diff > SLEEP_TIMEOUT_MS) {
-      // 1 minute passed: Turn OFF Backlight
-      setBacklight(false);
+      // Only print and switch backlight if we aren't already in deep sleep
+      if (!is_deep_sleep) {
+          Serial.println(">>> ENTERING SLEEP SCREEN MODE <<<");
+          setBacklight(false);
+          is_deep_sleep = true; 
+      }
       
-      // Stay on sleep screen logic internally so it's ready when we wake
+      // Safety check: ensure we are on the sleep screen (in case we skipped screensaver)
       if (lv_scr_act() != ui_uiScreenSleep && ui_uiScreenSleep != NULL) {
-        Serial.println(">>> ENTERING SLEEP SCREEN MODE <<<");
            lv_scr_load_anim(ui_uiScreenSleep, LV_SCR_LOAD_ANIM_NONE, 0, 0, false);
       }
-  } 
+  }
   // STATE B: SCREENSAVER (Sleep Screen, Backlight ON)
   else if (diff > SCREENSAVER_TIMEOUT_MS) {
-      // 30 seconds passed: Show Sleep Screen (Screensaver)
+      
+      // If we are coming back from Deep Sleep, wake backlight but keep sleep screen
+      if (is_deep_sleep) {
+          setBacklight(true);
+          is_deep_sleep = false; 
+      }
+
+      // 30 seconds passed: Show Sleep Screen
       if (lv_scr_act() != ui_uiScreenSleep) {
           Serial.println(">>> ENTERING SCREENSAVER MODE <<<");
           if(ui_uiScreenSleep != NULL) {
               lv_scr_load_anim(ui_uiScreenSleep, LV_SCR_LOAD_ANIM_FADE_ON, 500, 0, false);
           }
       }
-      // Ensure Backlight is ON (we can't dim, so we keep it ON)
+      // Ensure Backlight is ON
       setBacklight(true);
-  } 
+  }
   // STATE C: ACTIVE (Home Screen, Backlight ON)
   else {
+      is_deep_sleep = false; // Reset sleep flag
+
       // Less than 30s: Show Home Screen
       if (lv_scr_act() == ui_uiScreenSleep) {
           Serial.println(">>> WAKING UP <<<");
