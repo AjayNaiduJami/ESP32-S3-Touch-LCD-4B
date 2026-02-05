@@ -31,13 +31,13 @@
 
 /* ================= BACKLIGHT CONFIG ================= */
 // Logic seems to be Active Low (0 = Bright, 255 = Off) based on your comments
-#define BL_DUTY_BRIGHT  0
-#define BL_DUTY_DIM     100   // Dim level (0-255). 100 is fairly dim if 255 is OFF
-#define BL_DUTY_OFF     255
+#define BL_DUTY_BRIGHT 0
+#define BL_DUTY_DIM 100
+#define BL_DUTY_OFF 255
 
 // Screen TIMEOUTS
-#define SCREENSAVER_TIMEOUT_MS 30000   // 30 Secs -> Show Sleep Screen
-#define SLEEP_TIMEOUT_MS       60000   // 60 Secs -> Turn Backlight OFF
+#define SCREENSAVER_TIMEOUT_MS 30000 // 30 Secs -> Show Sleep Screen
+#define SLEEP_TIMEOUT_MS 60000 // 60 Secs -> Turn Backlight OFF
 
 bool is_backlight_off = false;
 bool screensaver_force_bright = false;
@@ -299,29 +299,21 @@ void touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data) {
     lx = x; ly = y;
 
     if (!was_pressed) {
-        // --- WAKE UP LOGIC ---
         if (is_backlight_off) {
             touch_for_wake_only = true;
-            
-            // Set time exactly to the start of Screensaver mode
-            // This ensures we have the full Screensaver duration before it sleeps again
             last_touch_ms = millis() - SCREENSAVER_TIMEOUT_MS; 
-            
-            // CRITICAL FIX: Tell the loop to keep brightness MAX for this session
             screensaver_force_bright = true;
         } else {
             touch_for_wake_only = false;
-            last_touch_ms = millis(); // Reset to Active
-            screensaver_force_bright = false; // User interacted, so we are Active
+            last_touch_ms = millis();
+            screensaver_force_bright = false;
         }
         was_pressed = true;
     }
 
     if (touch_for_wake_only) {
-        // Prevent "Ghost Click" on UI when waking up
         data->state = LV_INDEV_STATE_RELEASED; 
     } else {
-        // Normal operation - Keep awake
         last_touch_ms = millis();
         data->state = LV_INDEV_STATE_PRESSED; 
     }
@@ -410,7 +402,6 @@ void check_sensor_logic() {
     float delta = abs(acc.x - last_acc_x) + abs(acc.y - last_acc_y) + abs(acc.z - last_acc_z);
     last_acc_x = acc.x; last_acc_y = acc.y; last_acc_z = acc.z;
     if (delta > MOTION_THRESHOLD) {
-        // If OFF, set time to Screensaver zone. If ON, set to Active zone.
         if (is_backlight_off) {
              last_touch_ms = millis() - SCREENSAVER_TIMEOUT_MS - 1000;
         } else {
@@ -592,7 +583,6 @@ void hide_loader() {
         loader_overlay = NULL;
     }
 }
-// ------------------------
 
 void save_ha_settings(const char* h, const char* p_str, const char* u, const char* p, const char* topic, bool en) {
   prefs.begin("sys_config", false);
@@ -958,7 +948,6 @@ void swipe_event_cb(lv_event_t *e) {
 }
 
 void back_event_cb(lv_event_t *e) {
-    // Disable WiFi if user leaves error screen
     if (lv_scr_act() == screen_wifi && wifi_enabled && WiFi.status() != WL_CONNECTED) {
         Serial.println("User left WiFi screen without connecting. Disabling.");
         wifi_enabled = false;
@@ -978,7 +967,6 @@ void back_event_cb(lv_event_t *e) {
 
     wipe_wifi_popup(); 
     
-    // Ensure keyboard on Time screen is hidden when leaving
     if(kb_time && !lv_obj_has_flag(kb_time, LV_OBJ_FLAG_HIDDEN)) {
         lv_obj_add_flag(kb_time, LV_OBJ_FLAG_HIDDEN);
     }
@@ -1291,7 +1279,7 @@ void create_power_screen(lv_obj_t *parent) {
     lv_label_set_text(power_info_label, "Loading...");
     lv_label_set_long_mode(power_info_label, LV_LABEL_LONG_WRAP);
     lv_obj_set_style_text_font(power_info_label, &lv_font_montserrat_16, 0);
-    lv_obj_set_style_text_color(power_info_label, lv_color_black(), 0); // Black text
+    lv_obj_set_style_text_color(power_info_label, lv_color_black(), 0);
     lv_obj_align(power_info_label, LV_ALIGN_TOP_LEFT, 20, 70); 
 }
 
@@ -1312,7 +1300,7 @@ void create_notifications_page(lv_obj_t *parent) {
     lv_obj_set_style_bg_opa(btn_clear_all, LV_OPA_COVER, 0);
     lv_obj_set_style_text_color(btn_clear_all, lv_palette_main(LV_PALETTE_RED), 0);
     lv_obj_set_style_shadow_width(btn_clear_all, 0, 0);
-    lv_obj_set_style_radius(btn_clear_all, 16, 0); // Pill shape
+    lv_obj_set_style_radius(btn_clear_all, 16, 0);
     lv_obj_add_event_cb(btn_clear_all, clear_all_event_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_add_flag(btn_clear_all, LV_OBJ_FLAG_HIDDEN);
 
@@ -1321,14 +1309,12 @@ void create_notifications_page(lv_obj_t *parent) {
     lv_obj_set_style_text_color(lbl_ca, lv_palette_main(LV_PALETTE_RED), 0);
     lv_obj_center(lbl_ca);
 
-    // 5. Empty State Label (Dark Text for Light BG)
     no_notification_label = lv_label_create(parent);
     lv_label_set_text(no_notification_label, "No New Alerts");
     lv_obj_set_style_text_font(no_notification_label, &lv_font_montserrat_24, 0);
     lv_obj_set_style_text_color(no_notification_label, lv_palette_lighten(LV_PALETTE_GREY, 1), 0);
     lv_obj_align(no_notification_label, LV_ALIGN_CENTER, 0, 20);
 
-    // 6. The List Container
     notification_list = lv_list_create(parent);
     lv_obj_set_size(notification_list, 460, 340); 
     lv_obj_align(notification_list, LV_ALIGN_TOP_MID, 0, 100);
@@ -1349,7 +1335,6 @@ void create_notifications_page(lv_obj_t *parent) {
 void create_wifi_screen(lv_obj_t *parent) {
     lv_obj_set_style_bg_color(parent, lv_color_white(), 0);
 
-    // --- Header ---
     lv_obj_t *btn_back = lv_btn_create(parent);
     lv_obj_set_size(btn_back, 60, 40);
     lv_obj_align(btn_back, LV_ALIGN_TOP_LEFT, 10, 10);
@@ -1366,7 +1351,6 @@ void create_wifi_screen(lv_obj_t *parent) {
     lv_obj_set_style_text_color(title, lv_palette_main(LV_PALETTE_DEEP_ORANGE), 0);
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 20);
 
-    // --- Enable Switch ---
     sw_wifi_enable = lv_switch_create(parent);
     lv_obj_set_size(sw_wifi_enable, 50, 25);
     lv_obj_align(sw_wifi_enable, LV_ALIGN_TOP_RIGHT, -20, 60); 
@@ -1377,7 +1361,6 @@ void create_wifi_screen(lv_obj_t *parent) {
     lv_obj_set_style_text_color(lbl_en, lv_color_black(), 0);
     lv_obj_align(lbl_en, LV_ALIGN_TOP_RIGHT, -80, 65);    
 
-    // --- Main Container ---
     cont_wifi_inputs = lv_obj_create(parent);
     lv_obj_set_size(cont_wifi_inputs, 480, 380); 
     lv_obj_align(cont_wifi_inputs, LV_ALIGN_TOP_MID, 0, 100);
@@ -1388,7 +1371,6 @@ void create_wifi_screen(lv_obj_t *parent) {
 
     if(!wifi_enabled) lv_obj_add_flag(cont_wifi_inputs, LV_OBJ_FLAG_HIDDEN);
 
-    // --- INPUT STYLE HELPER ---
     static lv_style_t style_input;
     if(style_input.prop_cnt == 0) {
         lv_style_init(&style_input);
@@ -1399,7 +1381,6 @@ void create_wifi_screen(lv_obj_t *parent) {
         lv_style_set_radius(&style_input, 8);
     }
 
-    // ROW 1: SSID
     lv_obj_t *lbl_ssid = lv_label_create(cont_wifi_inputs);
     lv_label_set_text(lbl_ssid, "SSID:");
     lv_obj_set_style_text_color(lbl_ssid, lv_palette_main(LV_PALETTE_GREY), 0);
@@ -1423,7 +1404,6 @@ void create_wifi_screen(lv_obj_t *parent) {
     lv_label_set_text(lbl_scan, "Scan");
     lv_obj_center(lbl_scan);
 
-    // ROW 2: PASS
     lv_obj_t *lbl_pass = lv_label_create(cont_wifi_inputs);
     lv_label_set_text(lbl_pass, "Pass:");
     lv_obj_set_style_text_color(lbl_pass, lv_palette_main(LV_PALETTE_GREY), 0);
@@ -1448,13 +1428,11 @@ void create_wifi_screen(lv_obj_t *parent) {
     lv_label_set_text(lbl_save, "Join");
     lv_obj_center(lbl_save);
 
-    // ROW 3: STATUS
     lbl_wifi_status = lv_label_create(cont_wifi_inputs);
     lv_label_set_text(lbl_wifi_status, "Status: Ready");
     lv_obj_set_style_text_color(lbl_wifi_status, lv_palette_darken(LV_PALETTE_GREY, 2), 0);
     lv_obj_align(lbl_wifi_status, LV_ALIGN_TOP_LEFT, 20, 105);
 
-    // SAVED LIST
     lv_obj_t *lbl_saved = lv_label_create(cont_wifi_inputs);
     lv_label_set_text(lbl_saved, "Saved Networks:");
     lv_obj_set_style_text_color(lbl_saved, lv_color_black(), 0);
@@ -1468,7 +1446,6 @@ void create_wifi_screen(lv_obj_t *parent) {
     
     refresh_saved_wifi_list_ui(); 
     
-    // --- SCAN POPUP (The fix) ---
     kb_wifi = lv_keyboard_create(parent);
     lv_obj_set_size(kb_wifi, 480, 220);
     lv_obj_align(kb_wifi, LV_ALIGN_BOTTOM_MID, 0, 0);
@@ -1478,22 +1455,18 @@ void create_wifi_screen(lv_obj_t *parent) {
     lv_obj_set_size(scan_list_ui, 400, 300);
     lv_obj_align(scan_list_ui, LV_ALIGN_CENTER, 0, 40);
     
-    // White Background
     lv_obj_set_style_bg_color(scan_list_ui, lv_color_white(), 0); 
     lv_obj_set_style_radius(scan_list_ui, 12, 0);
 
-    // Subtle Grey Border (Removed the Red/Orange)
     lv_obj_set_style_border_color(scan_list_ui, lv_palette_lighten(LV_PALETTE_GREY, 1), 0);
     lv_obj_set_style_border_width(scan_list_ui, 1, 0);
     
-    // Drop Shadow
     lv_obj_set_style_shadow_color(scan_list_ui, lv_palette_main(LV_PALETTE_GREY), 0);
     lv_obj_set_style_shadow_width(scan_list_ui, 50, 0);
     lv_obj_set_style_shadow_opa(scan_list_ui, LV_OPA_40, 0);
 
     lv_obj_add_flag(scan_list_ui, LV_OBJ_FLAG_HIDDEN); 
 
-    // --- KEYBOARD ---
     kb_wifi = lv_keyboard_create(parent);
     lv_obj_set_size(kb_wifi, 480, 220);
     lv_obj_align(kb_wifi, LV_ALIGN_BOTTOM_MID, 0, 0);
@@ -1512,7 +1485,6 @@ void create_wifi_screen(lv_obj_t *parent) {
 void create_ha_screen(lv_obj_t *parent) {
     lv_obj_set_style_bg_color(parent, lv_color_white(), 0);
 
-    // Header
     lv_obj_t *btn_back = lv_btn_create(parent);
     lv_obj_set_size(btn_back, 60, 40);
     lv_obj_align(btn_back, LV_ALIGN_TOP_LEFT, 10, 10);
@@ -1549,7 +1521,6 @@ void create_ha_screen(lv_obj_t *parent) {
 
     if(!mqtt_enabled) lv_obj_add_flag(cont_ha_inputs, LV_OBJ_FLAG_HIDDEN);
 
-    // Style
     static lv_style_t style_input;
     if(style_input.prop_cnt == 0) {
         lv_style_init(&style_input);
@@ -1560,7 +1531,6 @@ void create_ha_screen(lv_obj_t *parent) {
         lv_style_set_radius(&style_input, 8);
     }
 
-    // ROW 1: HOST & PORT
     lv_obj_t *lbl_host = lv_label_create(cont_ha_inputs);
     lv_label_set_text(lbl_host, "Host:");
     lv_obj_set_style_text_color(lbl_host, lv_palette_main(LV_PALETTE_GREY), 0);
@@ -1588,7 +1558,6 @@ void create_ha_screen(lv_obj_t *parent) {
     lv_obj_align(ta_mqtt_port, LV_ALIGN_TOP_LEFT, 350, 5);
     lv_obj_add_event_cb(ta_mqtt_port, ha_ta_event_cb, LV_EVENT_ALL, NULL);
 
-    // ROW 2: USER & PASS
     lv_obj_t *lbl_user = lv_label_create(cont_ha_inputs);
     lv_label_set_text(lbl_user, "User:");
     lv_obj_set_style_text_color(lbl_user, lv_palette_main(LV_PALETTE_GREY), 0);
@@ -1616,7 +1585,6 @@ void create_ha_screen(lv_obj_t *parent) {
     lv_obj_align(ta_mqtt_pass, LV_ALIGN_TOP_LEFT, 280, 65);
     lv_obj_add_event_cb(ta_mqtt_pass, ha_ta_event_cb, LV_EVENT_ALL, NULL);
 
-    // --- ROW 3: NOTIFICATION TOPIC (New Section) ---
     lv_obj_t *lbl_topic = lv_label_create(cont_ha_inputs);
     lv_label_set_text(lbl_topic, "Notify Topic:");
     lv_obj_set_style_text_color(lbl_topic, lv_palette_main(LV_PALETTE_GREY), 0);
@@ -1630,13 +1598,11 @@ void create_ha_screen(lv_obj_t *parent) {
     lv_obj_align(ta_mqtt_topic, LV_ALIGN_TOP_LEFT, 120, 115);
     lv_obj_add_event_cb(ta_mqtt_topic, ha_ta_event_cb, LV_EVENT_ALL, NULL);
 
-    // ROW 4: STATUS (Pushed down)
     lbl_ha_status = lv_label_create(cont_ha_inputs);
     lv_label_set_text(lbl_ha_status, "Status: Not Connected");
     lv_obj_set_style_text_color(lbl_ha_status, lv_palette_darken(LV_PALETTE_GREY, 2), 0);
     lv_obj_align(lbl_ha_status, LV_ALIGN_TOP_LEFT, 10, 165); 
 
-    // SAVE BTN
     lv_obj_t *btn_save = lv_btn_create(cont_ha_inputs);
     lv_obj_set_size(btn_save, 140, 45);
     lv_obj_align(btn_save, LV_ALIGN_BOTTOM_MID, 0, -10);
@@ -1647,7 +1613,6 @@ void create_ha_screen(lv_obj_t *parent) {
     lv_label_set_text(lbl_save, "Save Settings");
     lv_obj_center(lbl_save);
 
-    // KEYBOARD
     kb_ha = lv_keyboard_create(parent);
     lv_obj_set_size(kb_ha, 480, 220);
     lv_obj_align(kb_ha, LV_ALIGN_BOTTOM_MID, 0, 0);
@@ -1661,7 +1626,7 @@ void create_ha_screen(lv_obj_t *parent) {
             lv_obj_clear_state(ta_mqtt_port, LV_STATE_FOCUSED);
             lv_obj_clear_state(ta_mqtt_user, LV_STATE_FOCUSED);
             lv_obj_clear_state(ta_mqtt_pass, LV_STATE_FOCUSED);
-            lv_obj_clear_state(ta_mqtt_topic, LV_STATE_FOCUSED); // Clear topic focus
+            lv_obj_clear_state(ta_mqtt_topic, LV_STATE_FOCUSED);
         }
     }, LV_EVENT_ALL, NULL);
 }
@@ -1697,7 +1662,6 @@ void create_about_screen(lv_obj_t *parent) {
     lv_obj_set_width(ta_device_name, 440);
     lv_obj_align(ta_device_name, LV_ALIGN_TOP_MID, 0, 95);
     
-    // Style text area
     lv_obj_set_style_bg_color(ta_device_name, lv_color_white(), 0);
     lv_obj_set_style_border_color(ta_device_name, lv_palette_main(LV_PALETTE_GREY), 0);
     lv_obj_set_style_border_width(ta_device_name, 1, 0);
@@ -1707,7 +1671,7 @@ void create_about_screen(lv_obj_t *parent) {
 
     lbl_about_info = lv_label_create(parent);
     lv_obj_set_width(lbl_about_info, 440);
-    lv_obj_set_style_text_color(lbl_about_info, lv_color_black(), 0); // Black text
+    lv_obj_set_style_text_color(lbl_about_info, lv_color_black(), 0);
     lv_obj_align(lbl_about_info, LV_ALIGN_TOP_LEFT, 20, 150);
 
     update_about_text();
@@ -1744,23 +1708,18 @@ void create_settings_menu_screen(lv_obj_t *parent) {
     lv_obj_set_style_border_width(list, 0, 0);
     lv_obj_set_style_pad_row(list, 5, 0); 
 
-    // Helper lambda to add styled buttons
     auto add_settings_item = [&](const char* icon, const char* text, int id) {
         lv_obj_t *btn = lv_list_add_btn(list, icon, text);
         
-        // Slightly reduced height (was 65) for a tighter look
         lv_obj_set_height(btn, 60);
-        
-        // Card Style (Light Grey)
         lv_obj_set_flex_align(btn, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
         lv_obj_set_style_bg_color(btn, lv_palette_lighten(LV_PALETTE_GREY, 4), 0);
         lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, 0);
         lv_obj_set_style_radius(btn, 12, 0);
         
-        // Text & Icon
         lv_obj_set_style_text_color(btn, lv_color_black(), 0); 
         lv_obj_set_style_text_font(btn, &lv_font_montserrat_20, 0);
-        lv_obj_set_style_text_color(btn, lv_palette_main(LV_PALETTE_DEEP_ORANGE), LV_PART_INDICATOR); // Icon Color
+        lv_obj_set_style_text_color(btn, lv_palette_main(LV_PALETTE_DEEP_ORANGE), LV_PART_INDICATOR);
 
         lv_obj_add_event_cb(btn, settings_menu_event_cb, LV_EVENT_CLICKED, (void*)(intptr_t)id);
     };
@@ -1906,7 +1865,6 @@ void create_time_date_screen(lv_obj_t *parent) {
     lv_obj_set_style_bg_color(parent, lv_color_white(), 0);
     lv_obj_add_event_cb(parent, time_screen_load_cb, LV_EVENT_SCREEN_LOADED, NULL);
 
-    // Header
     lv_obj_t *btn_back = lv_btn_create(parent);
     lv_obj_set_size(btn_back, 50, 40);
     lv_obj_align(btn_back, LV_ALIGN_TOP_LEFT, 10, 10);
@@ -1943,7 +1901,6 @@ void create_time_date_screen(lv_obj_t *parent) {
 
     if(ntp_auto_update) lv_obj_add_flag(cont_manual_time, LV_OBJ_FLAG_HIDDEN);
 
-    // Style Helper
     static lv_style_t style_input;
     if(style_input.prop_cnt == 0) {
         lv_style_init(&style_input);
@@ -1951,11 +1908,10 @@ void create_time_date_screen(lv_obj_t *parent) {
         lv_style_set_border_width(&style_input, 1);
         lv_style_set_border_color(&style_input, lv_palette_main(LV_PALETTE_GREY));
         lv_style_set_text_color(&style_input, lv_color_black());
-        lv_style_set_text_align(&style_input, LV_TEXT_ALIGN_CENTER); // Center text
+        lv_style_set_text_align(&style_input, LV_TEXT_ALIGN_CENTER);
         lv_style_set_radius(&style_input, 8);
     }
 
-    // DATE
     lv_obj_t *lbl_date = lv_label_create(cont_manual_time);
     lv_label_set_text(lbl_date, "Date (DD / MM / YYYY)");
     lv_obj_set_style_text_color(lbl_date, lv_palette_main(LV_PALETTE_GREY), 0);
@@ -1982,7 +1938,6 @@ void create_time_date_screen(lv_obj_t *parent) {
     lv_obj_add_style(ta_year, &style_input, 0);
     lv_obj_add_event_cb(ta_year, time_ta_event_cb, LV_EVENT_ALL, NULL);
 
-    // TIME
     lv_obj_t *lbl_time = lv_label_create(cont_manual_time);
     lv_label_set_text(lbl_time, "Time (HH : MM)");
     lv_obj_set_style_text_color(lbl_time, lv_palette_main(LV_PALETTE_GREY), 0);
@@ -2042,24 +1997,19 @@ void fetch_weather_data() {
         Serial.println("Weather Skipped: No WiFi");
         return;
     }
-    
-    // Safety delay to let network stack settle
+
     delay(50); 
     
     HTTPClient http;
     WiFiClient client; 
     
-    // --- 1. GET LOCATION ---
     Serial.println("Fetching Location...");
-    // Set timeout to prevent blocking the core for too long
     http.setTimeout(3000); 
-    
     http.begin(client, "http://ip-api.com/json/?fields=status,lat,lon,city");
     int httpCode = http.GET();
     
     if (httpCode == 200) {
         String payload = http.getString();
-        // Use a smaller, efficient filter for JSON to save memory
         JsonDocument filter;
         filter["status"] = true;
         filter["lat"] = true;
@@ -2086,7 +2036,6 @@ void fetch_weather_data() {
     }
     http.end();
 
-    // --- 2. GET WEATHER ---
     if (geo_lat != 0.0) {
         String url = "http://api.open-meteo.com/v1/forecast?latitude=" + String(geo_lat) + 
                      "&longitude=" + String(geo_lon) + 
@@ -2099,7 +2048,6 @@ void fetch_weather_data() {
         if (wCode == 200) {
             String payload = http.getString();
             
-            // Filter again to save memory
             JsonDocument filter;
             filter["current_weather"]["temperature"] = true;
             filter["current_weather"]["weathercode"] = true;
@@ -2117,9 +2065,7 @@ void fetch_weather_data() {
                 String bigTempStr = String(current_temp, 0) + "°";
                 if(ui_uiLabelTemp) lv_label_set_text(ui_uiLabelTemp, bigTempStr.c_str());
                 
-                // 1. Get the enum type
                 weather_type_t type = get_weather_type(weather_code);
-
                 String desc = get_weather_description(weather_code);
                 if(ui_uiLabelWeather) lv_label_set_text(ui_uiLabelWeather, desc.c_str());
 
@@ -2136,7 +2082,6 @@ void fetch_weather_data() {
     }
 }
 
-// Helper function to update the UI
 void update_weather_ui(weather_type_t type, bool is_night) {
     
     if (ui_uiScreenSleep == NULL || ui_uiIconWeather == NULL) return;
@@ -2233,11 +2178,7 @@ void setup() {
 
   gfx->begin();
   gfx->fillScreen(RGB565_BLACK);
-  // --- REPLACED PWM BACKLIGHT SETUP ---
-  // ledcAttach(LCD_BL_PIN, 5000, 8);  <-- REMOVED
-  // ledcWrite(LCD_BL_PIN, 200);       <-- REMOVED
-  
-  // Turn Backlight ON using Expander
+
   ledcAttach(LCD_BL_PIN, 5000, 8);
   ledcWrite(LCD_BL_PIN, 0);
 
@@ -2253,7 +2194,6 @@ void setup() {
   lv_display_set_flush_cb(disp, my_disp_flush);
   lv_display_set_buffers(disp, disp_draw_buf, NULL, bufSize * sizeof(lv_color_t), LV_DISPLAY_RENDER_MODE_PARTIAL);
   
-  // 3. Init Inputs
   lv_indev_t *indev = lv_indev_create();
   lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);
   lv_indev_set_read_cb(indev, touch_read_cb);
@@ -2367,10 +2307,8 @@ void loop() {
           Serial.println(">>> ENTERING SLEEP (OFF) <<<");
           ledcWrite(LCD_BL_PIN, BL_DUTY_OFF); 
           is_backlight_off = true;     
-          screensaver_force_bright = false; // Reset flag
+          screensaver_force_bright = false;
       }
-      
-      // Ensure we are on Sleep Screen while sleeping
       if (lv_scr_act() != ui_uiScreenSleep && ui_uiScreenSleep != NULL) {
            lv_scr_load(ui_uiScreenSleep); 
       }
@@ -2379,16 +2317,10 @@ void loop() {
   // 2. STATE: SCREENSAVER (Time/Weather)
   else if (diff > SCREENSAVER_TIMEOUT_MS) {
       is_backlight_off = false; 
-
-      // Switch to Sleep UI if not already there
       if (lv_scr_act() != ui_uiScreenSleep && ui_uiScreenSleep != NULL) {
           Serial.println(">>> ENTERING SCREENSAVER <<<");
           lv_scr_load(ui_uiScreenSleep); 
       }
-
-      // --- BRIGHTNESS LOGIC ---
-      // If we are here because we just woke up (screensaver_force_bright), keep it bright.
-      // If we are here because the user stopped using the device (idling), dim it.
       if (screensaver_force_bright) {
           ledcWrite(LCD_BL_PIN, BL_DUTY_BRIGHT); 
       } else {
@@ -2398,17 +2330,15 @@ void loop() {
   
   // 3. STATE: ACTIVE (Home/Menu)
   else {
-      // We are in active use
       if (is_backlight_off || lv_scr_act() == ui_uiScreenSleep) {
           Serial.println(">>> WAKING TO HOME <<<");
           lv_scr_load(screen_home); 
-          lv_indev_wait_release(lv_indev_get_act()); // Prevent ghost clicks
+          lv_indev_wait_release(lv_indev_get_act());
           if(msg_popup) { lv_obj_del(msg_popup); msg_popup = NULL; }
       }
-      
       ledcWrite(LCD_BL_PIN, BL_DUTY_BRIGHT); 
       is_backlight_off = false;
-      screensaver_force_bright = false; // Reset flag as we are fully active now
+      screensaver_force_bright = false;
   }
 
   switch (current_wifi_state) {
@@ -2624,13 +2554,11 @@ void loop() {
        if(ui_uiLabelTime) lv_label_set_text(ui_uiLabelTime, buf_sleep);
        if(ui_uiLabelDate) lv_label_set_text(ui_uiLabelDate, date);
 
-       // 2. Update Weather Temp & Background
        if (initial_weather_fetched) {
            String bigTempStr = String(current_temp, 0) + "°";
            lv_label_set_text(ui_uiLabelTemp, bigTempStr.c_str());
         }
 
-       // --- Notification Chip Logic ---
        int count = get_notification_count();
        lv_obj_t* notify_chip = (lv_obj_t*)lv_obj_get_user_data(ui_uiPanelAlertsLabel);
 
@@ -2644,37 +2572,32 @@ void loop() {
            }
        }
        
-       // --- NEW COLORFUL STATUS LOGIC ---
        if (ui_uiIconWifi != NULL) {
            if(current_wifi_state == WIFI_CONNECTED) {
-               lv_obj_set_style_text_color(ui_uiIconWifi, lv_color_white(), 0); // Green if OK
+               lv_obj_set_style_text_color(ui_uiIconWifi, lv_color_white(), 0);
            } else if (current_wifi_state == WIFI_CONNECTING) {
-               lv_obj_set_style_text_color(ui_uiIconWifi, lv_palette_main(LV_PALETTE_ORANGE), 0); // Orange if connecting
+               lv_obj_set_style_text_color(ui_uiIconWifi, lv_palette_main(LV_PALETTE_ORANGE), 0);
            } else {
-               lv_obj_set_style_text_color(ui_uiIconWifi, lv_palette_main(LV_PALETTE_RED), 0); // Red if off
+               lv_obj_set_style_text_color(ui_uiIconWifi, lv_palette_main(LV_PALETTE_RED), 0);
            }
        }
 
-       // 2. MQTT Color Logic
        if (ui_uiIconMqtt != NULL) {
            if (mqtt_enabled) {
                if (mqtt.connected()) {
-                   lv_obj_set_style_text_color(ui_uiIconMqtt, lv_color_white(), 0); // Blue if Connected
+                   lv_obj_set_style_text_color(ui_uiIconMqtt, lv_color_white(), 0);
                } else {
-                   lv_obj_set_style_text_color(ui_uiIconMqtt, lv_palette_main(LV_PALETTE_ORANGE), 0); // Orange if retrying
+                   lv_obj_set_style_text_color(ui_uiIconMqtt, lv_palette_main(LV_PALETTE_ORANGE), 0);
                }
            } else {
-               lv_obj_set_style_text_color(ui_uiIconMqtt, lv_palette_main(LV_PALETTE_RED), 0); // Dark if disabled
+               lv_obj_set_style_text_color(ui_uiIconMqtt, lv_palette_main(LV_PALETTE_RED), 0);
            }
        }
        
-       // 3. Battery Color & Icon Logic
        if (ui_uiIconBat != NULL) {
            if (power.isBatteryConnect()) {
                int pct = power.getBatteryPercent();
                String batText = "";
-               
-               // Color based on percentage
                if (pct > 95) {
                    lv_obj_set_style_text_color(ui_uiIconBat, lv_color_white(), 0);
                    batText = String(LV_SYMBOL_BATTERY_FULL);
@@ -2698,15 +2621,12 @@ void loop() {
                    lv_obj_set_style_text_color(ui_uiIconBat, lv_palette_main(LV_PALETTE_RED), 0);
                    batText = String(LV_SYMBOL_BATTERY_EMPTY);
                }
-               
                if(power.isCharging()) {
                    lv_obj_set_style_text_color(ui_uiIconBat, lv_palette_main(LV_PALETTE_YELLOW), 0);
                    batText = String(LV_SYMBOL_CHARGE);
                }
                lv_label_set_text(ui_uiIconBat, batText.c_str());
-               
            } else {
-               // USB Powered
                lv_obj_set_style_text_color(ui_uiIconBat, lv_color_white(), 0);
                lv_label_set_text(ui_uiIconBat, LV_SYMBOL_USB);
            }
@@ -2714,10 +2634,8 @@ void loop() {
     }
   }
 
-  // Update MQTT Status Label on HA Screen
   if (lv_scr_act() == screen_ha && lbl_ha_status) {
       if (!mqtt_enabled) {
-            // Only update if it doesn't already say "Disabled (Error)"
             const char* cur_txt = lv_label_get_text(lbl_ha_status);
             if(strstr(cur_txt, "Error") == NULL) {
                 lv_label_set_text(lbl_ha_status, "Status: Disabled");
@@ -2735,13 +2653,10 @@ void loop() {
   }
 
   if (lv_scr_act() == screen_power) {
-      // Create fixed buffers. 512 bytes is plenty for the final text.
       char pwr_buf[256];
       char net_buf[128];
       char mqtt_buf[128];
       char final_buf[512];
-
-      // --- 1. POWER STATUS BUILDER ---
       bool isPluggedIn = (power.getVbusVoltage() > 4000);
       bool isBatteryConnected = power.isBatteryConnect();
       
@@ -2760,7 +2675,6 @@ void loop() {
               );
           }
       } else {
-          // Battery Power
           if (isBatteryConnected) {
               snprintf(pwr_buf, sizeof(pwr_buf), 
                   "POWER STATUS:\nSource: Battery\nLevel: %d%%\nVoltage: %u mV\nStatus: Discharging", 
@@ -2774,7 +2688,6 @@ void loop() {
           }
       }
 
-      // --- 2. NETWORK STATUS BUILDER ---
       if(current_wifi_state == WIFI_CONNECTED) {
           long rssi = WiFi.RSSI();
           int quality = 2 * (rssi + 100);
@@ -2790,7 +2703,6 @@ void loop() {
           snprintf(net_buf, sizeof(net_buf), "\nNETWORK STATUS:\nWiFi: Disconnected");
       }
 
-      // --- 3. MQTT STATUS BUILDER ---
       if (!mqtt_enabled) {
           snprintf(mqtt_buf, sizeof(mqtt_buf), "\nMQTT STATUS:\nState: Disabled");
       } else if (mqtt.connected()) {
@@ -2802,9 +2714,7 @@ void loop() {
           snprintf(mqtt_buf, sizeof(mqtt_buf), "\nMQTT STATUS:\nState: Connecting...");
       }
 
-      // --- 4. COMBINE AND SET ---
-      snprintf(final_buf, sizeof(final_buf), "%s\n%s\n%s", pwr_buf, net_buf, mqtt_buf);
-      
+      snprintf(final_buf, sizeof(final_buf), "%s\n%s\n%s", pwr_buf, net_buf, mqtt_buf);      
       lv_label_set_text(power_info_label, final_buf);
   }
 }
