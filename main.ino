@@ -29,11 +29,18 @@
 #define MAX_SAVED_NETWORKS 5
 #define WIFI_RECONNECT_INTERVAL 60000
 
+/* ================= BACKLIGHT CONFIG ================= */
+// Logic seems to be Active Low (0 = Bright, 255 = Off) based on your comments
+#define BL_DUTY_BRIGHT  0
+#define BL_DUTY_DIM     100   // Dim level (0-255). 100 is fairly dim if 255 is OFF
+#define BL_DUTY_OFF     255
+
 // Screen TIMEOUTS
-#define SCREENSAVER_TIMEOUT_MS 10000   // 30 Secs -> Show Sleep Screen
-#define SLEEP_TIMEOUT_MS       20000   // 60 Secs -> Turn Backlight OFF
+#define SCREENSAVER_TIMEOUT_MS 30000   // 30 Secs -> Show Sleep Screen
+#define SLEEP_TIMEOUT_MS       60000   // 60 Secs -> Turn Backlight OFF
 
 bool is_backlight_off = false;
+bool screensaver_force_bright = false;
 
 /* ================= STRUCTS & ENUMS ================= */
 
@@ -281,7 +288,7 @@ bool gt911_read_touch(uint16_t &x, uint16_t &y) {
 void touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data) {
   static uint16_t lx = 0, ly = 0;
   static bool was_pressed = false;
-  static bool touch_for_wake_only = false; // "Latch" variable
+  static bool touch_for_wake_only = false; 
 
   uint16_t x, y;
   bool touched = gt911_read_touch(x, y);
@@ -291,41 +298,37 @@ void touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data) {
     if (y >= screenHeight) y = screenHeight - 1;
     lx = x; ly = y;
 
-    // --- NEW LOGIC: DETECT START OF TOUCH ---
     if (!was_pressed) {
-        // This is the very first moment of contact.
-        // If the backlight is OFF, this touch is designated ONLY for waking up.
+        // --- WAKE UP LOGIC ---
         if (is_backlight_off) {
             touch_for_wake_only = true;
+            
+            // Set time exactly to the start of Screensaver mode
+            // This ensures we have the full Screensaver duration before it sleeps again
+            last_touch_ms = millis() - SCREENSAVER_TIMEOUT_MS; 
+            
+            // CRITICAL FIX: Tell the loop to keep brightness MAX for this session
+            screensaver_force_bright = true;
         } else {
             touch_for_wake_only = false;
+            last_touch_ms = millis(); // Reset to Active
+            screensaver_force_bright = false; // User interacted, so we are Active
         }
         was_pressed = true;
     }
 
     if (touch_for_wake_only) {
-        // SCENARIO 1: WAKING UP
-        // Keep the timer inside the "Screensaver" window (e.g., 15 seconds)
-        // This forces the Loop to stay in State B (Screensaver)
-        last_touch_ms = millis() - SCREENSAVER_TIMEOUT_MS - 1500;
-        
-        // CRITICAL: Tell LVGL the finger is RELEASED.
-        // This prevents the "Ghost Click" on the UI while waking up.
+        // Prevent "Ghost Click" on UI when waking up
         data->state = LV_INDEV_STATE_RELEASED; 
     } else {
-        // SCENARIO 2: NORMAL OPERATION
-        // Full Reset to Active Mode (0 seconds)
+        // Normal operation - Keep awake
         last_touch_ms = millis();
-        // Send actual touch to LVGL
         data->state = LV_INDEV_STATE_PRESSED; 
     }
-    // ----------------------------------------
-
   } else {
-    // Finger released
     data->state = LV_INDEV_STATE_RELEASED;
     was_pressed = false;
-    touch_for_wake_only = false; // Reset the latch
+    touch_for_wake_only = false; 
   }
   
   data->point.x = lx; data->point.y = ly;
@@ -2356,72 +2359,56 @@ void loop() {
 
   unsigned long now = millis();
   unsigned long diff = 0;
-
-  // Safety handle millis() rollover
   if (now >= last_touch_ms) diff = now - last_touch_ms;
-  else diff = 0;
 
-  // ================= STATE MACHINE =================
-
-  // STATE A: DEEP SLEEP (Backlight OFF)
+  // 1. STATE: DEEP SLEEP (Screen OFF)
   if (diff > SLEEP_TIMEOUT_MS) {
       if (!is_backlight_off) {
           Serial.println(">>> ENTERING SLEEP (OFF) <<<");
-          ledcWrite(LCD_BL_PIN, 255); // Turn OFF
-          is_backlight_off = true;    
+          ledcWrite(LCD_BL_PIN, BL_DUTY_OFF); 
+          is_backlight_off = true;     
+          screensaver_force_bright = false; // Reset flag
       }
       
-      // Ensure we are on Sleep Screen
+      // Ensure we are on Sleep Screen while sleeping
       if (lv_scr_act() != ui_uiScreenSleep && ui_uiScreenSleep != NULL) {
-           lv_scr_load(ui_uiScreenSleep); // Instant switch
+           lv_scr_load(ui_uiScreenSleep); 
       }
   }
   
-  // STATE B: SCREENSAVER (Sleep Screen, Brightness Managed)
+  // 2. STATE: SCREENSAVER (Time/Weather)
   else if (diff > SCREENSAVER_TIMEOUT_MS) {
-      
-      // 1. Wake from Off
-      if (is_backlight_off) {
-          Serial.println(">>> WAKE TO SCREENSAVER (FULL BRIGHT) <<<");
-          ledcWrite(LCD_BL_PIN, 0); 
-          // We can safely clear this now. 
-          // If the user is holding the finger, 'touch_read_cb' 
-          // prevents 'diff' from dropping to 0 until they let go.
-          is_backlight_off = false; 
-      } 
-      // 2. Dimming transition (Active -> Screensaver)
-      else {
-          // Keep it dim if we just timed out from active use
-          ledcWrite(LCD_BL_PIN, 100); 
-      }
-
-      // Switch to Sleep Screen
-      if (lv_scr_act() != ui_uiScreenSleep) {
-          Serial.println(">>> SWITCHING TO SCREENSAVER UI <<<");
-          if(ui_uiScreenSleep != NULL) {
-              lv_scr_load(ui_uiScreenSleep); // Instant switch
-          }
-      }
-  }
-  
-  // STATE C: ACTIVE (Home Screen)
-  else {
       is_backlight_off = false; 
 
-      // Switch to Home Screen
-      if (lv_scr_act() == ui_uiScreenSleep) {
+      // Switch to Sleep UI if not already there
+      if (lv_scr_act() != ui_uiScreenSleep && ui_uiScreenSleep != NULL) {
+          Serial.println(">>> ENTERING SCREENSAVER <<<");
+          lv_scr_load(ui_uiScreenSleep); 
+      }
+
+      // --- BRIGHTNESS LOGIC ---
+      // If we are here because we just woke up (screensaver_force_bright), keep it bright.
+      // If we are here because the user stopped using the device (idling), dim it.
+      if (screensaver_force_bright) {
+          ledcWrite(LCD_BL_PIN, BL_DUTY_BRIGHT); 
+      } else {
+          ledcWrite(LCD_BL_PIN, BL_DUTY_DIM); 
+      }
+  }
+  
+  // 3. STATE: ACTIVE (Home/Menu)
+  else {
+      // We are in active use
+      if (is_backlight_off || lv_scr_act() == ui_uiScreenSleep) {
           Serial.println(">>> WAKING TO HOME <<<");
-          
-          lv_scr_load(screen_home); // Instant switch
-
-          // Prevent ghost clicks
-          lv_indev_wait_release(lv_indev_get_act());
-
-          
+          lv_scr_load(screen_home); 
+          lv_indev_wait_release(lv_indev_get_act()); // Prevent ghost clicks
           if(msg_popup) { lv_obj_del(msg_popup); msg_popup = NULL; }
       }
       
-      ledcWrite(LCD_BL_PIN, 0); // Full Brightness
+      ledcWrite(LCD_BL_PIN, BL_DUTY_BRIGHT); 
+      is_backlight_off = false;
+      screensaver_force_bright = false; // Reset flag as we are fully active now
   }
 
   switch (current_wifi_state) {

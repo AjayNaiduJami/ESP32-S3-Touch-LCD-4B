@@ -36,7 +36,7 @@ A feature-rich, touch-screen Smart Home Control Panel built for the **Waveshare 
 * **Hardware Integration:** Full support for **AXP2101 PMU** to monitor battery percentage, voltage, and charging status.
 * **Screensaver & Sleep:**
 * *30 Seconds:* Dim screen/Show Screensaver (Clock & Weather).
-* *60 Seconds:* Turn off backlight to save battery.  **(WIP)**
+* *60 Seconds:* Turn off backlight to save battery.
 * *Wake:* Tap screen or shake device (IMU-based wake using QMI8658).
 
 ## 🛠️ Hardware Specifications
