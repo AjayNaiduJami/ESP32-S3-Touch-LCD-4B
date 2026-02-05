@@ -21,20 +21,19 @@
 #define SWITCH_COUNT 9
 #define GRID_COLS 3
 
-// If Pin 2 doesn't work, try changing this to 1.
-#define LCD_BL_PIN 2
-
-// TIMEOUTS
-#define SCREENSAVER_TIMEOUT_MS 30000   // 30 Secs -> Show Sleep Screen
-#define SLEEP_TIMEOUT_MS       60000   // 60 Secs -> Turn Backlight OFF
-
+#define LCD_BL_PIN 4
 #define GT911_ADDR 0x14 
 
 #define MOTION_THRESHOLD 0.20 
 #define MAX_NOTIFICATIONS 15
 #define MAX_SAVED_NETWORKS 5
 #define WIFI_RECONNECT_INTERVAL 60000
-#define BACKLIGHT_DIM_LEVEL 10
+
+// Screen TIMEOUTS
+#define SCREENSAVER_TIMEOUT_MS 10000   // 30 Secs -> Show Sleep Screen
+#define SLEEP_TIMEOUT_MS       20000   // 60 Secs -> Turn Backlight OFF
+
+bool is_backlight_off = false;
 
 /* ================= STRUCTS & ENUMS ================= */
 
@@ -278,18 +277,57 @@ bool gt911_read_touch(uint16_t &x, uint16_t &y) {
   return true;
 }
 
+/* ================= HARDWARE DRIVERS ================= */
 void touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data) {
   static uint16_t lx = 0, ly = 0;
+  static bool was_pressed = false;
+  static bool touch_for_wake_only = false; // "Latch" variable
+
   uint16_t x, y;
-  if (gt911_read_touch(x, y)) {
+  bool touched = gt911_read_touch(x, y);
+
+  if (touched) {
     if (x >= screenWidth) x = screenWidth - 1;
     if (y >= screenHeight) y = screenHeight - 1;
     lx = x; ly = y;
-    data->state = LV_INDEV_STATE_PRESSED;    
-    last_touch_ms = millis();
+
+    // --- NEW LOGIC: DETECT START OF TOUCH ---
+    if (!was_pressed) {
+        // This is the very first moment of contact.
+        // If the backlight is OFF, this touch is designated ONLY for waking up.
+        if (is_backlight_off) {
+            touch_for_wake_only = true;
+        } else {
+            touch_for_wake_only = false;
+        }
+        was_pressed = true;
+    }
+
+    if (touch_for_wake_only) {
+        // SCENARIO 1: WAKING UP
+        // Keep the timer inside the "Screensaver" window (e.g., 15 seconds)
+        // This forces the Loop to stay in State B (Screensaver)
+        last_touch_ms = millis() - SCREENSAVER_TIMEOUT_MS - 1500;
+        
+        // CRITICAL: Tell LVGL the finger is RELEASED.
+        // This prevents the "Ghost Click" on the UI while waking up.
+        data->state = LV_INDEV_STATE_RELEASED; 
+    } else {
+        // SCENARIO 2: NORMAL OPERATION
+        // Full Reset to Active Mode (0 seconds)
+        last_touch_ms = millis();
+        // Send actual touch to LVGL
+        data->state = LV_INDEV_STATE_PRESSED; 
+    }
+    // ----------------------------------------
+
   } else {
+    // Finger released
     data->state = LV_INDEV_STATE_RELEASED;
+    was_pressed = false;
+    touch_for_wake_only = false; // Reset the latch
   }
+  
   data->point.x = lx; data->point.y = ly;
 }
 
@@ -369,7 +407,12 @@ void check_sensor_logic() {
     float delta = abs(acc.x - last_acc_x) + abs(acc.y - last_acc_y) + abs(acc.z - last_acc_z);
     last_acc_x = acc.x; last_acc_y = acc.y; last_acc_z = acc.z;
     if (delta > MOTION_THRESHOLD) {
-      last_touch_ms = millis();
+        // If OFF, set time to Screensaver zone. If ON, set to Active zone.
+        if (is_backlight_off) {
+             last_touch_ms = millis() - SCREENSAVER_TIMEOUT_MS - 1000;
+        } else {
+             last_touch_ms = millis();
+        }
     }
   }
 }
@@ -2162,15 +2205,6 @@ void update_weather_ui(weather_type_t type, bool is_night) {
     lv_obj_set_style_bg_image_src(ui_uiIconWeather, new_icon, LV_PART_MAIN | LV_STATE_DEFAULT);
 }
 
-void setBacklight(bool on) {
-    // The backlight is connected to the IO Expander, not the ESP32 directly.
-    // We use the 'expander' object created for the display.
-    if(expander) {
-        expander->pinMode(LCD_BL_PIN, OUTPUT);
-        expander->digitalWrite(LCD_BL_PIN, on ? HIGH : LOW);
-    }
-}
-
 /* ================= SETUP & LOOP ================= */
 
 void setup() {
@@ -2201,8 +2235,9 @@ void setup() {
   // ledcWrite(LCD_BL_PIN, 200);       <-- REMOVED
   
   // Turn Backlight ON using Expander
-  setBacklight(true);
-  
+  ledcAttach(LCD_BL_PIN, 5000, 8);
+  ledcWrite(LCD_BL_PIN, 0);
+
   lv_init();
   lv_tick_set_cb([]{ return millis(); });
 
@@ -2320,56 +2355,73 @@ void loop() {
   check_sensor_logic();
 
   unsigned long now = millis();
-  unsigned long diff = now - last_touch_ms;
+  unsigned long diff = 0;
 
-  // Track state to prevent spamming Serial
-  static bool is_deep_sleep = false;
+  // Safety handle millis() rollover
+  if (now >= last_touch_ms) diff = now - last_touch_ms;
+  else diff = 0;
 
-  // STATE A: DEEP SLEEP (Display OFF)
+  // ================= STATE MACHINE =================
+
+  // STATE A: DEEP SLEEP (Backlight OFF)
   if (diff > SLEEP_TIMEOUT_MS) {
-      // Only print and switch backlight if we aren't already in deep sleep
-      if (!is_deep_sleep) {
-          Serial.println(">>> ENTERING SLEEP SCREEN MODE <<<");
-          setBacklight(false);
-          is_deep_sleep = true; 
+      if (!is_backlight_off) {
+          Serial.println(">>> ENTERING SLEEP (OFF) <<<");
+          ledcWrite(LCD_BL_PIN, 255); // Turn OFF
+          is_backlight_off = true;    
       }
       
-      // Safety check: ensure we are on the sleep screen (in case we skipped screensaver)
+      // Ensure we are on Sleep Screen
       if (lv_scr_act() != ui_uiScreenSleep && ui_uiScreenSleep != NULL) {
-           lv_scr_load_anim(ui_uiScreenSleep, LV_SCR_LOAD_ANIM_NONE, 0, 0, false);
+           lv_scr_load(ui_uiScreenSleep); // Instant switch
       }
   }
-  // STATE B: SCREENSAVER (Sleep Screen, Backlight ON)
+  
+  // STATE B: SCREENSAVER (Sleep Screen, Brightness Managed)
   else if (diff > SCREENSAVER_TIMEOUT_MS) {
       
-      // If we are coming back from Deep Sleep, wake backlight but keep sleep screen
-      if (is_deep_sleep) {
-          setBacklight(true);
-          is_deep_sleep = false; 
+      // 1. Wake from Off
+      if (is_backlight_off) {
+          Serial.println(">>> WAKE TO SCREENSAVER (FULL BRIGHT) <<<");
+          ledcWrite(LCD_BL_PIN, 0); 
+          // We can safely clear this now. 
+          // If the user is holding the finger, 'touch_read_cb' 
+          // prevents 'diff' from dropping to 0 until they let go.
+          is_backlight_off = false; 
+      } 
+      // 2. Dimming transition (Active -> Screensaver)
+      else {
+          // Keep it dim if we just timed out from active use
+          ledcWrite(LCD_BL_PIN, 100); 
       }
 
-      // 30 seconds passed: Show Sleep Screen
+      // Switch to Sleep Screen
       if (lv_scr_act() != ui_uiScreenSleep) {
-          Serial.println(">>> ENTERING SCREENSAVER MODE <<<");
+          Serial.println(">>> SWITCHING TO SCREENSAVER UI <<<");
           if(ui_uiScreenSleep != NULL) {
-              lv_scr_load_anim(ui_uiScreenSleep, LV_SCR_LOAD_ANIM_FADE_ON, 500, 0, false);
+              lv_scr_load(ui_uiScreenSleep); // Instant switch
           }
       }
-      // Ensure Backlight is ON
-      setBacklight(true);
   }
-  // STATE C: ACTIVE (Home Screen, Backlight ON)
+  
+  // STATE C: ACTIVE (Home Screen)
   else {
-      is_deep_sleep = false; // Reset sleep flag
+      is_backlight_off = false; 
 
-      // Less than 30s: Show Home Screen
+      // Switch to Home Screen
       if (lv_scr_act() == ui_uiScreenSleep) {
-          Serial.println(">>> WAKING UP <<<");
-          lv_scr_load_anim(screen_home, LV_SCR_LOAD_ANIM_FADE_ON, 200, 0, false);
+          Serial.println(">>> WAKING TO HOME <<<");
+          
+          lv_scr_load(screen_home); // Instant switch
+
+          // Prevent ghost clicks
+          lv_indev_wait_release(lv_indev_get_act());
+
+          
           if(msg_popup) { lv_obj_del(msg_popup); msg_popup = NULL; }
       }
-      // Ensure Backlight is ON
-      setBacklight(true);
+      
+      ledcWrite(LCD_BL_PIN, 0); // Full Brightness
   }
 
   switch (current_wifi_state) {
