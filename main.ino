@@ -23,7 +23,6 @@
 
 // If Pin 2 doesn't work, try changing this to 1.
 #define LCD_BL_PIN 2
-#define BL_PWM_CH  0
 
 // TIMEOUTS
 #define SCREENSAVER_TIMEOUT_MS 30000   // 30 Secs -> Show Sleep Screen
