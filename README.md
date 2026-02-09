@@ -110,6 +110,13 @@ This project requires specific driver libraries provided by Waveshare to functio
 
 Due to the large size of the GUI assets, the default ESP32 partition scheme is insufficient. Created [partitions](partitions.csv) file to allocate 10MB for the application, ensuring enough space for LVGL images.
 
+```csv
+# Name,   Type, SubType, Offset,  Size, Flags
+nvs,      data, nvs,     0x9000,  0x5000,
+otadata,  data, ota,     0xe000,  0x2000,
+app0,     app,  ota_0,   0x10000, 0xA00000,
+spiffs,   data, spiffs,  0xA10000,0x5F0000,
+```
 
 ### 🔗 MQTT Configuration (Home Assistant)
 
@@ -137,6 +144,11 @@ To send a notification to the panel from Home Assistant, publish a message to th
 * **Payload:** `Front Door is Open`
 
 ---
+### 🔍 Troubleshooting
+- **Screen is black but code is running:** Ensure PSRAM is set to OPI PSRAM. The 480x480 frame buffer requires OPI PSRAM to initialize the RGB interface.
+- **Compilation Error:** 'class Arduino_RGB_Display' has no member named 'Display_Brightness'.
+  - **Fix:** This project uses a custom driver implementation. Ensure you have copied the libraries folder from the Waveshare Demo zip specifically into your Arduino libraries folder.
+- **Backlight Control:** The backlight is controlled via the AXP2101 PMU (DLDO1). Standard analogWrite on a GPIO will not work.
 
 ### 🎨 [Assets](assets/) & UI Resources
 
