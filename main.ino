@@ -3,6 +3,7 @@
 #include <Wire.h>
 #include <Arduino.h>
 #include <HTTPClient.h>
+#include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
 
 #include "pin_config.h"
@@ -83,6 +84,7 @@ lv_obj_t *btn_ampm, *lbl_ampm;
 lv_obj_t *ta_day, *ta_month, *ta_year, *ta_hour, *ta_min;
 bool time_is_pm = false;
 bool ntp_auto_update = true;
+int current_utc_offset = 0;
 
 // --- Weather & Location Globals ---
 float geo_lat = 0.0;
@@ -1853,7 +1855,7 @@ void sw_ntp_event_cb(lv_event_t * e) {
     if(is_on) {
         lv_obj_add_flag(cont_manual_time, LV_OBJ_FLAG_HIDDEN);
         if(WiFi.status() == WL_CONNECTED) {
-            configTime(19800, 0, "pool.ntp.org", "time.nist.gov");
+            configTime(current_utc_offset, 0, "pool.ntp.org", "time.nist.gov");
             trigger_weather_update = true; 
         }
     } else {
@@ -2035,6 +2037,50 @@ void fetch_weather_data() {
         Serial.printf("Location HTTP Fail: %d\n", httpCode);
     }
     http.end();
+
+    if (geo_lat != 0.0) {
+        WiFiClientSecure secureClient; 
+        secureClient.setInsecure();
+        HTTPClient http;
+        
+        String timeUrl = "https://www.timeapi.io/api/v1/time/current/coordinate?latitude=" + 
+                        String(geo_lat, 4) + "&longitude=" + String(geo_lon, 4);
+
+        if (http.begin(secureClient, timeUrl)) { 
+            int tCode = http.GET();
+            String response = http.getString();
+
+            if (tCode == 200) {
+                JsonDocument docTime;
+                DeserializationError error = deserializeJson(docTime, response);
+
+                if (!error) {
+                    current_utc_offset = docTime["utc_offset_seconds"]; 
+                    configTime(current_utc_offset, 0, "pool.ntp.org", "time.nist.gov");
+                    String dt = docTime["date_time"].as<String>();
+                    if (dt.length() >= 16) {
+                        int year  = dt.substring(0, 4).toInt();
+                        int month = dt.substring(5, 7).toInt();
+                        int day   = dt.substring(8, 10).toInt();
+                        int hour  = dt.substring(11, 13).toInt();
+                        int min   = dt.substring(14, 16).toInt();
+                        int sec   = dt.substring(17, 19).toInt();
+                        rtc.setDateTime(year, month, day, hour, min, sec);
+                        Serial.printf("RTC Updated from API: %04d-%02d-%02d %02d:%02d:%02d\n", 
+                                    year, month, day, hour, min, sec);
+                    }
+                    Serial.printf("Time Sync Success! Offset: %d sec\n", current_utc_offset);
+                    if (lv_scr_act() == screen_time_date) time_screen_load_cb(NULL);
+                }
+            } else {
+                Serial.printf("TimeAPI Fail! HTTP Code: %d\n", tCode);
+                Serial.println("Response body: " + response);
+            }
+            http.end();
+        } else {
+            Serial.println("Unable to connect to TimeAPI server.");
+        }
+    }
 
     if (geo_lat != 0.0) {
         String url = "http://api.open-meteo.com/v1/forecast?latitude=" + String(geo_lat) + 
@@ -2238,7 +2284,7 @@ void setup() {
   lv_obj_set_style_text_font(clock_label, &lv_font_montserrat_24, 0); 
   lv_obj_align(clock_label, LV_ALIGN_TOP_MID, 0, 10);
 
-  configTime(19800, 0, "pool.ntp.org", "time.nist.gov");
+  configTime(current_utc_offset, 0, "pool.ntp.org", "time.nist.gov");
   if (!rtc.begin(Wire, 47, 48)) { rtc.begin(Wire, 47, 48); }
 
   if (wifi_enabled) {
