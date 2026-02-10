@@ -55,6 +55,16 @@ struct SavedWifi {
 
 struct HaSwitch { const char* name; const char* topic_cmd; const char* topic_state; bool state; lv_obj_t* btn; lv_obj_t* label; };
 
+/* ================= LOCATION CONFIG STRUCT ================= */
+struct SystemLocation {
+    float lat;
+    float lon;
+    int utc_offset;        // In seconds (e.g., 19800)
+    char city[32];
+    bool is_manual;        // true = User locked a location, false = Use IP-API
+    bool has_saved_data;   // true = We have data in flash to fall back on
+};
+
 /* ================= GLOBALS ================= */
 
 uint32_t last_wifi_check = 0;
@@ -84,7 +94,6 @@ lv_obj_t *btn_ampm, *lbl_ampm;
 lv_obj_t *ta_day, *ta_month, *ta_year, *ta_hour, *ta_min;
 bool time_is_pm = false;
 bool ntp_auto_update = true;
-int current_utc_offset = 0;
 
 // --- Weather & Location Globals ---
 float geo_lat = 0.0;
@@ -95,6 +104,8 @@ int weather_code = 0;
 int is_day = 1;
 bool initial_weather_fetched = false;
 bool trigger_weather_update = false;
+
+SystemLocation sysLoc = { 0.0, 0.0, 0, "Initial", false, false };
 
 typedef enum {
     WEATHER_CLEAR = 0,
@@ -112,6 +123,19 @@ lv_obj_t *notification_list;
 lv_obj_t *no_notification_label;
 lv_obj_t *btn_clear_all; 
 lv_obj_t *lbl_about_info = NULL;
+
+// --- Location Screen Handles ---
+lv_obj_t *screen_location;
+lv_obj_t *sw_auto_location;
+lv_obj_t *cont_manual_loc;
+lv_obj_t *ta_city_search;
+lv_obj_t *lbl_search_result;
+lv_obj_t *kb_loc;
+
+// Temp vars for the search result (before saving)
+float search_result_lat = 0.0;
+float search_result_lon = 0.0;
+char search_result_name[32] = "";
 
 Preferences prefs;
 char deviceName[32] = "ESP32-S3-Panel";
@@ -516,7 +540,8 @@ void wipe_wifi_popup() {
 }
 
 void load_settings() {
-  prefs.begin("sys_config", true); 
+  prefs.begin("sys_config", true);
+  load_location_prefs();
   
   String s = prefs.getString("dev_name", "ESP32-S3-Panel");
   s.toCharArray(deviceName, 32);
@@ -965,6 +990,7 @@ void back_event_cb(lv_event_t *e) {
         if(sw_wifi_enable) lv_obj_clear_state(sw_wifi_enable, LV_STATE_CHECKED);
         if(cont_wifi_inputs) lv_obj_add_flag(cont_wifi_inputs, LV_OBJ_FLAG_HIDDEN);
         if(lbl_wifi_status) lv_label_set_text(lbl_wifi_status, "Status: Disabled");
+        
     }
 
     wipe_wifi_popup(); 
@@ -975,7 +1001,7 @@ void back_event_cb(lv_event_t *e) {
     
     if (lv_scr_act() == screen_wifi || lv_scr_act() == screen_ha || 
         lv_scr_act() == screen_power || lv_scr_act() == screen_about || 
-        lv_scr_act() == screen_time_date) {
+        lv_scr_act() == screen_time_date || lv_scr_act() == screen_location) {
         
         lv_scr_load_anim(screen_settings_menu, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 200, 0, false);
     } 
@@ -1252,6 +1278,9 @@ void settings_menu_event_cb(lv_event_t *e) {
         }
         else if (user_data == 5) {
             lv_scr_load_anim(screen_time_date, LV_SCR_LOAD_ANIM_MOVE_LEFT, 200, 0, false);
+        }
+        else if (user_data == 6) {
+            lv_scr_load_anim(screen_location, LV_SCR_LOAD_ANIM_MOVE_LEFT, 200, 0, false);
         }
     }
 }
@@ -1729,6 +1758,7 @@ void create_settings_menu_screen(lv_obj_t *parent) {
     add_settings_item(LV_SYMBOL_WIFI, "  WiFi Setup", 3);
     add_settings_item(LV_SYMBOL_HOME, "  Home Assistant", 4);
     add_settings_item(LV_SYMBOL_REFRESH, "  Time & Date", 5);
+    add_settings_item(LV_SYMBOL_GPS, "  Location", 6);
     add_settings_item(LV_SYMBOL_LIST, "  System Status", 2);
     add_settings_item(LV_SYMBOL_FILE, "  About Device", 1);
 }
@@ -1855,12 +1885,250 @@ void sw_ntp_event_cb(lv_event_t * e) {
     if(is_on) {
         lv_obj_add_flag(cont_manual_time, LV_OBJ_FLAG_HIDDEN);
         if(WiFi.status() == WL_CONNECTED) {
-            configTime(current_utc_offset, 0, "pool.ntp.org", "time.nist.gov");
+            configTime(sysLoc.utc_offset, 0, "pool.ntp.org", "time.nist.gov");
             trigger_weather_update = true; 
         }
     } else {
         lv_obj_clear_flag(cont_manual_time, LV_OBJ_FLAG_HIDDEN);
     }
+}
+
+void btn_search_cb(lv_event_t * e) {
+    const char* txt = lv_textarea_get_text(ta_city_search);
+    if (strlen(txt) < 2) return;
+    lv_obj_add_flag(kb_loc, LV_OBJ_FLAG_HIDDEN); // Hide keyboard
+    perform_geocoding_search(txt);
+}
+
+void btn_save_loc_cb(lv_event_t * e) {
+    // 1. Save to Struct
+    sysLoc.is_manual = true; 
+    // Only update coords if we actually performed a search
+    if (search_result_lat != 0.0) {
+        sysLoc.lat = search_result_lat;
+        sysLoc.lon = search_result_lon;
+        strncpy(sysLoc.city, search_result_name, 31);
+    }
+    
+    // 2. Save to Flash
+    save_location_prefs();
+    
+    // 3. Trigger Updates
+    trigger_weather_update = true; // This will fetch new Timezone & Weather
+    
+    // 4. Return to Settings
+    lv_scr_load_anim(screen_settings_menu, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 200, 0, false);
+}
+
+void sw_auto_loc_cb(lv_event_t * e) {
+    bool auto_mode = lv_obj_has_state(sw_auto_location, LV_STATE_CHECKED);
+    
+    if (auto_mode) {
+        lv_obj_add_flag(cont_manual_loc, LV_OBJ_FLAG_HIDDEN);
+        sysLoc.is_manual = false;
+        save_location_prefs();
+        trigger_weather_update = true; // Trigger IP-Geolocation
+    } else {
+        lv_obj_clear_flag(cont_manual_loc, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+void loc_ta_event_cb(lv_event_t * e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    lv_obj_t * ta = (lv_obj_t *)lv_event_get_target(e);
+    if(code == LV_EVENT_CLICKED || code == LV_EVENT_FOCUSED) {
+        lv_keyboard_set_textarea(kb_loc, ta);
+        lv_obj_clear_flag(kb_loc, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+void perform_geocoding_search(const char* query) {
+    if (WiFi.status() != WL_CONNECTED) {
+        lv_label_set_text(lbl_search_result, "Error: No WiFi");
+        return;
+    }
+
+    show_loader();
+    
+    HTTPClient http;
+    WiFiClient client; // Use standard client for this API
+    
+    // URL Encode the query (simplistic version for spaces)
+    String q = String(query);
+    q.replace(" ", "+");
+    
+    String url = "http://geocoding-api.open-meteo.com/v1/search?name=" + q + "&count=1&language=en&format=json";
+    
+    Serial.println("Geocoding: " + url);
+    http.begin(client, url);
+    
+    int code = http.GET();
+    if (code == 200) {
+        String payload = http.getString();
+        JsonDocument doc;
+        DeserializationError error = deserializeJson(doc, payload);
+        
+        if (!error && doc.containsKey("results")) {
+            JsonArray results = doc["results"];
+            if (results.size() > 0) {
+                search_result_lat = results[0]["latitude"];
+                search_result_lon = results[0]["longitude"];
+                const char* n = results[0]["name"];
+                const char* c = results[0]["country_code"]; // e.g., "US", "IN"
+                
+                strncpy(search_result_name, n, 31);
+                
+                String resText = "Found: " + String(n) + ", " + String(c) + "\n" + 
+                                 "(" + String(search_result_lat, 2) + ", " + String(search_result_lon, 2) + ")";
+                lv_label_set_text(lbl_search_result, resText.c_str());
+                lv_obj_set_style_text_color(lbl_search_result, lv_palette_main(LV_PALETTE_GREEN), 0);
+            } else {
+                lv_label_set_text(lbl_search_result, "No city found.");
+                lv_obj_set_style_text_color(lbl_search_result, lv_palette_main(LV_PALETTE_RED), 0);
+            }
+        } else {
+            lv_label_set_text(lbl_search_result, "Parse Error");
+        }
+    } else {
+        lv_label_set_text(lbl_search_result, "API Error");
+    }
+    http.end();
+    hide_loader();
+}
+
+void load_location_prefs() {
+    prefs.begin("loc_config", true); // Open in Read-Only mode
+
+    sysLoc.is_manual = prefs.getBool("is_manual", false);
+    sysLoc.lat = prefs.getFloat("lat", 17.3850); // Default to Hyderabad
+    sysLoc.lon = prefs.getFloat("lon", 78.4867);
+    sysLoc.utc_offset = prefs.getInt("utc_offset", 19800);
+    
+    String c = prefs.getString("city", "Hyderabad");
+    strncpy(sysLoc.city, c.c_str(), 31);
+    
+    // Check if we've ever successfully saved data before
+    sysLoc.has_saved_data = prefs.getBool("has_data", false);
+
+    prefs.end();
+
+    // Immediately apply the last known offset to the system clock
+    configTime(sysLoc.utc_offset, 0, "pool.ntp.org");
+    
+    Serial.printf("Loaded Loc: %s (Manual: %s)\n", sysLoc.city, sysLoc.is_manual ? "YES" : "NO");
+}
+
+void save_location_prefs() {
+    prefs.begin("loc_config", false); // Open in Write mode
+
+    prefs.putBool("is_manual", sysLoc.is_manual);
+    prefs.putFloat("lat", sysLoc.lat);
+    prefs.putFloat("lon", sysLoc.lon);
+    prefs.putInt("utc_offset", sysLoc.utc_offset);
+    prefs.putString("city", sysLoc.city);
+    prefs.putBool("has_data", true);
+
+    prefs.end();
+    Serial.println("Location Preferences Saved.");
+}
+
+void create_location_screen(lv_obj_t *parent) {
+    lv_obj_set_style_bg_color(parent, lv_color_white(), 0);
+
+    // -- Header --
+    lv_obj_t *btn_back = lv_btn_create(parent);
+    lv_obj_set_size(btn_back, 60, 40);
+    lv_obj_align(btn_back, LV_ALIGN_TOP_LEFT, 10, 10);
+    lv_obj_set_style_bg_color(btn_back, lv_palette_lighten(LV_PALETTE_GREY, 3), 0);
+    lv_obj_set_style_text_color(btn_back, lv_color_black(), 0);
+    lv_obj_add_event_cb(btn_back, back_event_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_t *lbl_back = lv_label_create(btn_back);
+    lv_label_set_text(lbl_back, LV_SYMBOL_LEFT);
+    lv_obj_center(lbl_back);
+
+    lv_obj_t *title = lv_label_create(parent);
+    lv_label_set_text(title, "Location");
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(title, lv_palette_main(LV_PALETTE_DEEP_ORANGE), 0);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 20);
+
+    // -- Auto Toggle --
+    sw_auto_location = lv_switch_create(parent);
+    lv_obj_set_size(sw_auto_location, 50, 25);
+    lv_obj_align(sw_auto_location, LV_ALIGN_TOP_RIGHT, -20, 60);
+    lv_obj_add_event_cb(sw_auto_location, sw_auto_loc_cb, LV_EVENT_VALUE_CHANGED, NULL);
+    // Note: Switch is checked if Manual is FALSE
+    if (!sysLoc.is_manual) lv_obj_add_state(sw_auto_location, LV_STATE_CHECKED);
+
+    lv_obj_t *lbl_auto = lv_label_create(parent);
+    lv_label_set_text(lbl_auto, "Auto (IP):");
+    lv_obj_set_style_text_color(lbl_auto, lv_palette_main(LV_PALETTE_GREY), 0);
+    lv_obj_align(lbl_auto, LV_ALIGN_TOP_RIGHT, -80, 65);
+
+    // -- Manual Container --
+    cont_manual_loc = lv_obj_create(parent);
+    lv_obj_set_size(cont_manual_loc, 480, 350);
+    lv_obj_align(cont_manual_loc, LV_ALIGN_TOP_MID, 0, 90);
+    lv_obj_set_style_bg_opa(cont_manual_loc, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(cont_manual_loc, 0, 0);
+    lv_obj_clear_flag(cont_manual_loc, LV_OBJ_FLAG_SCROLLABLE);
+
+    if (!sysLoc.is_manual) lv_obj_add_flag(cont_manual_loc, LV_OBJ_FLAG_HIDDEN);
+
+    // Current Info
+    lv_obj_t *lbl_curr = lv_label_create(cont_manual_loc);
+    String currStr = "Current: " + String(sysLoc.city);
+    lv_label_set_text(lbl_curr, currStr.c_str());
+    lv_obj_set_style_text_color(lbl_curr, lv_color_black(), 0);
+    lv_obj_align(lbl_curr, LV_ALIGN_TOP_LEFT, 20, 0);
+
+    // Search Bar
+    ta_city_search = lv_textarea_create(cont_manual_loc);
+    lv_textarea_set_one_line(ta_city_search, true);
+    lv_textarea_set_placeholder_text(ta_city_search, "Enter City Name...");
+    lv_obj_set_width(ta_city_search, 280);
+    lv_obj_align(ta_city_search, LV_ALIGN_TOP_LEFT, 20, 40);
+    lv_obj_add_event_cb(ta_city_search, loc_ta_event_cb, LV_EVENT_ALL, NULL);
+
+    lv_obj_t *btn_search = lv_btn_create(cont_manual_loc);
+    lv_obj_set_size(btn_search, 60, 40);
+    lv_obj_align(btn_search, LV_ALIGN_TOP_LEFT, 310, 40);
+    lv_obj_set_style_bg_color(btn_search, lv_palette_main(LV_PALETTE_BLUE), 0);
+    lv_obj_add_event_cb(btn_search, btn_search_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_t *lbl_s = lv_label_create(btn_search);
+    lv_label_set_text(lbl_s, LV_SYMBOL_REFRESH);
+    lv_obj_center(lbl_s);
+
+    // Results area
+    lbl_search_result = lv_label_create(cont_manual_loc);
+    lv_label_set_text(lbl_search_result, "Search to find coordinates.");
+    lv_obj_set_width(lbl_search_result, 400);
+    lv_label_set_long_mode(lbl_search_result, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_align(lbl_search_result, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(lbl_search_result, LV_ALIGN_TOP_MID, 0, 100);
+
+    // Save Button
+    lv_obj_t *btn_save = lv_btn_create(cont_manual_loc);
+    lv_obj_set_size(btn_save, 140, 50);
+    lv_obj_align(btn_save, LV_ALIGN_BOTTOM_MID, 0, -80);
+    lv_obj_set_style_bg_color(btn_save, lv_palette_main(LV_PALETTE_GREEN), 0);
+    lv_obj_add_event_cb(btn_save, btn_save_loc_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_t *l_save = lv_label_create(btn_save);
+    lv_label_set_text(l_save, "Save Location");
+    lv_obj_center(l_save);
+
+    // Keyboard
+    kb_loc = lv_keyboard_create(parent);
+    lv_obj_set_size(kb_loc, 480, 200);
+    lv_obj_align(kb_loc, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_keyboard_set_mode(kb_loc, LV_KEYBOARD_MODE_TEXT_LOWER);
+    lv_obj_add_flag(kb_loc, LV_OBJ_FLAG_HIDDEN);
+    
+    lv_obj_add_event_cb(kb_loc, [](lv_event_t* e){
+        if(lv_event_get_code(e) == LV_EVENT_CANCEL || lv_event_get_code(e) == LV_EVENT_READY) {
+            lv_obj_add_flag((lv_obj_t*)lv_event_get_target(e), LV_OBJ_FLAG_HIDDEN);
+        }
+    }, LV_EVENT_ALL, NULL);
 }
 
 void create_time_date_screen(lv_obj_t *parent) {
@@ -2000,53 +2268,67 @@ void fetch_weather_data() {
         return;
     }
 
-    delay(50); 
-    
+    // 2. Define Clients at top level scope
     HTTPClient http;
-    WiFiClient client; 
-    
-    Serial.println("Fetching Location...");
-    http.setTimeout(3000); 
-    http.begin(client, "http://ip-api.com/json/?fields=status,lat,lon,city");
-    int httpCode = http.GET();
-    
-    if (httpCode == 200) {
-        String payload = http.getString();
-        JsonDocument filter;
-        filter["status"] = true;
-        filter["lat"] = true;
-        filter["lon"] = true;
-        filter["city"] = true;
-        
-        JsonDocument docLoc;
-        deserializeJson(docLoc, payload, DeserializationOption::Filter(filter));
-        
-        if (docLoc["status"] == "success") {
-            geo_lat = docLoc["lat"];
-            geo_lon = docLoc["lon"];
-            const char* city = docLoc["city"];
-            if (city) {
-                city_name = String(city);
-                if (ui_uiLabelCity) lv_label_set_text(ui_uiLabelCity, city_name.c_str());
+    WiFiClient client;              // For HTTP (IP-API, Open-Meteo)
+    WiFiClientSecure secureClient;  // For HTTPS (TimeAPI)
+    secureClient.setInsecure();     // Skip cert check for speed
+
+    // ==========================================================
+    // STEP 1: RESOLVE COORDINATES (IP vs MANUAL)
+    // ==========================================================
+    if (!sysLoc.is_manual) {
+        Serial.println("Fetching IP Location...");
+        http.setTimeout(3000);
+        // Use 'client' for HTTP
+        if (http.begin(client, "http://ip-api.com/json/?fields=status,lat,lon,city")) {
+            int httpCode = http.GET();
+            if (httpCode == 200) {
+                String payload = http.getString();
+                JsonDocument docLoc;
+                deserializeJson(docLoc, payload);
+
+                if (docLoc["status"] == "success") {
+                    // Update Global Float Variables
+                    geo_lat = docLoc["lat"];
+                    geo_lon = docLoc["lon"];
+                    
+                    // Update Struct (but don't save to flash yet to save cycles)
+                    sysLoc.lat = geo_lat;
+                    sysLoc.lon = geo_lon;
+                    
+                    const char* c = docLoc["city"];
+                    strncpy(sysLoc.city, c, 31);
+                    city_name = String(c);
+
+                    if (ui_uiLabelCity) lv_label_set_text(ui_uiLabelCity, sysLoc.city);
+                    Serial.printf("IP Loc: %s (%.4f, %.4f)\n", sysLoc.city, geo_lat, geo_lon);
+                }
+            } else {
+                Serial.printf("IP-API Fail: %d\n", httpCode);
             }
-            Serial.printf("Location Success: %s (%.4f, %.4f)\n", city_name.c_str(), geo_lat, geo_lon);
-        } else {
-            Serial.println("Location API status: fail");
+            http.end();
         }
     } else {
-        Serial.printf("Location HTTP Fail: %d\n", httpCode);
+        // MANUAL MODE: Load from Struct
+        geo_lat = sysLoc.lat;
+        geo_lon = sysLoc.lon;
+        city_name = String(sysLoc.city);
+        if (ui_uiLabelCity) lv_label_set_text(ui_uiLabelCity, sysLoc.city);
+        Serial.println("Using Manual Location.");
     }
-    http.end();
 
+    // ==========================================================
+    // STEP 2: SYNC TIME (TimeAPI.io - HTTPS)
+    // ==========================================================
     if (geo_lat != 0.0) {
-        WiFiClientSecure secureClient; 
-        secureClient.setInsecure();
-        HTTPClient http;
-        
         String timeUrl = "https://www.timeapi.io/api/v1/time/current/coordinate?latitude=" + 
-                        String(geo_lat, 4) + "&longitude=" + String(geo_lon, 4);
-
-        if (http.begin(secureClient, timeUrl)) { 
+                         String(geo_lat, 4) + "&longitude=" + String(geo_lon, 4);
+        
+        Serial.println("Fetching Time...");
+        
+        // Use 'secureClient' for HTTPS
+        if (http.begin(secureClient, timeUrl)) {
             int tCode = http.GET();
             String response = http.getString();
 
@@ -2055,76 +2337,72 @@ void fetch_weather_data() {
                 DeserializationError error = deserializeJson(docTime, response);
 
                 if (!error) {
-                    current_utc_offset = docTime["utc_offset_seconds"]; 
-                    configTime(current_utc_offset, 0, "pool.ntp.org", "time.nist.gov");
+                    // 1. Update Offset
+                    sysLoc.utc_offset = docTime["utc_offset_seconds"]; 
+                    configTime(sysLoc.utc_offset, 0, "pool.ntp.org", "time.nist.gov");
+                    
+                    // 2. Update Hardware RTC
                     String dt = docTime["date_time"].as<String>();
                     if (dt.length() >= 16) {
-                        int year  = dt.substring(0, 4).toInt();
-                        int month = dt.substring(5, 7).toInt();
-                        int day   = dt.substring(8, 10).toInt();
-                        int hour  = dt.substring(11, 13).toInt();
-                        int min   = dt.substring(14, 16).toInt();
-                        int sec   = dt.substring(17, 19).toInt();
-                        rtc.setDateTime(year, month, day, hour, min, sec);
-                        Serial.printf("RTC Updated from API: %04d-%02d-%02d %02d:%02d:%02d\n", 
-                                    year, month, day, hour, min, sec);
+                        rtc.setDateTime(
+                            dt.substring(0, 4).toInt(),   // Year
+                            dt.substring(5, 7).toInt(),   // Month
+                            dt.substring(8, 10).toInt(),  // Day
+                            dt.substring(11, 13).toInt(), // Hour
+                            dt.substring(14, 16).toInt(), // Min
+                            dt.substring(17, 19).toInt()  // Sec
+                        );
                     }
-                    Serial.printf("Time Sync Success! Offset: %d sec\n", current_utc_offset);
+                    Serial.printf("Time Synced! Offset: %d\n", sysLoc.utc_offset);
+                    
+                    // Refresh UI if we are looking at it
                     if (lv_scr_act() == screen_time_date) time_screen_load_cb(NULL);
                 }
             } else {
-                Serial.printf("TimeAPI Fail! HTTP Code: %d\n", tCode);
-                Serial.println("Response body: " + response);
+                Serial.printf("TimeAPI Fail: %d\n", tCode);
             }
             http.end();
-        } else {
-            Serial.println("Unable to connect to TimeAPI server.");
         }
     }
 
+    // ==========================================================
+    // STEP 3: FETCH WEATHER (Open-Meteo - HTTP)
+    // ==========================================================
     if (geo_lat != 0.0) {
         String url = "http://api.open-meteo.com/v1/forecast?latitude=" + String(geo_lat) + 
-                     "&longitude=" + String(geo_lon) + 
-                     "&current_weather=true";
-                     
-        Serial.println("Fetching Weather...");
-        http.begin(client, url);
-        int wCode = http.GET();
+                     "&longitude=" + String(geo_lon) + "&current_weather=true";
         
-        if (wCode == 200) {
-            String payload = http.getString();
-            
-            JsonDocument filter;
-            filter["current_weather"]["temperature"] = true;
-            filter["current_weather"]["weathercode"] = true;
-            filter["current_weather"]["is_day"] = true;
-            
-            JsonDocument docWeather; 
-            DeserializationError error = deserializeJson(docWeather, payload, DeserializationOption::Filter(filter));
+        Serial.println("Fetching Weather...");
+        // Use 'client' for HTTP
+        if (http.begin(client, url)) {
+            int wCode = http.GET();
+            if (wCode == 200) {
+                String payload = http.getString();
+                JsonDocument docWeather;
+                // Filter to save memory
+                JsonDocument filter;
+                filter["current_weather"]["temperature"] = true;
+                filter["current_weather"]["weathercode"] = true;
+                filter["current_weather"]["is_day"] = true;
+                
+                deserializeJson(docWeather, payload, DeserializationOption::Filter(filter));
 
-            if (!error) {
                 current_temp = docWeather["current_weather"]["temperature"];
                 weather_code = docWeather["current_weather"]["weathercode"];
                 is_day = docWeather["current_weather"]["is_day"];
+                initial_weather_fetched = true;
 
-                initial_weather_fetched = true; 
-                String bigTempStr = String(current_temp, 0) + "°";
-                if(ui_uiLabelTemp) lv_label_set_text(ui_uiLabelTemp, bigTempStr.c_str());
+                // Update UI Labels
+                if(ui_uiLabelTemp) lv_label_set_text(ui_uiLabelTemp, (String(current_temp, 0) + "°").c_str());
+                if(ui_uiLabelWeather) lv_label_set_text(ui_uiLabelWeather, get_weather_description(weather_code).c_str());
                 
-                weather_type_t type = get_weather_type(weather_code);
-                String desc = get_weather_description(weather_code);
-                if(ui_uiLabelWeather) lv_label_set_text(ui_uiLabelWeather, desc.c_str());
-
-                update_weather_ui(type, (is_day == 0)); 
-                
-                Serial.printf("Weather: %.1f C, Code: %d\n", current_temp, weather_code);
+                update_weather_ui(get_weather_type(weather_code), (is_day == 0));
+                Serial.printf("Weather: %.1fC\n", current_temp);
+            } else {
+                Serial.printf("Weather Fail: %d\n", wCode);
             }
-        } else {
-            Serial.printf("Weather HTTP Fail: %d\n", wCode);
+            http.end();
         }
-        http.end();
-    } else {
-        Serial.println("Weather Skipped: Invalid Coordinates.");
     }
 }
 
@@ -2256,6 +2534,7 @@ void setup() {
   screen_wifi = lv_obj_create(NULL);
   screen_ha = lv_obj_create(NULL);
   screen_time_date = lv_obj_create(NULL);
+  screen_location = lv_obj_create(NULL);
 
   create_switch_grid(screen_home);
   create_page_dots(screen_home, 1);
@@ -2267,6 +2546,7 @@ void setup() {
   create_ha_screen(screen_ha); 
   create_about_screen(screen_about);
   create_time_date_screen(screen_time_date);
+  create_location_screen(screen_location);
 
   ui_init();
 
@@ -2284,7 +2564,7 @@ void setup() {
   lv_obj_set_style_text_font(clock_label, &lv_font_montserrat_24, 0); 
   lv_obj_align(clock_label, LV_ALIGN_TOP_MID, 0, 10);
 
-  configTime(current_utc_offset, 0, "pool.ntp.org", "time.nist.gov");
+  configTime(sysLoc.utc_offset, 0, "pool.ntp.org", "time.nist.gov");
   if (!rtc.begin(Wire, 47, 48)) { rtc.begin(Wire, 47, 48); }
 
   if (wifi_enabled) {
