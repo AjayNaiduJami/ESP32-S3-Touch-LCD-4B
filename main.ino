@@ -31,13 +31,6 @@
 #define WIFI_RECONNECT_INTERVAL 60000
 
 /* ================= BACKLIGHT CONFIG ================= */
-#define BL_DUTY_BRIGHT 0
-#define BL_DUTY_DIM 100
-#define BL_DUTY_OFF 255
-
-// Screen TIMEOUTS
-#define SCREENSAVER_TIMEOUT_MS 30000 // 30 Secs -> Show Sleep Screen
-#define SLEEP_TIMEOUT_MS 60000 // 60 Secs -> Turn Backlight OFF
 
 bool is_backlight_off = false;
 bool screensaver_force_bright = false;
@@ -928,36 +921,6 @@ void mqtt_callback(char* topic, byte* payload, unsigned int len) {
   } 
 }
 
-void mqtt_reconnect() {
-  if (!mqtt_enabled) return; 
-  
-  if(lbl_wifi_status) {
-      lv_label_set_text(lbl_wifi_status, "Status: MQTT Connecting...");
-      lv_obj_set_style_text_color(lbl_wifi_status, lv_palette_main(LV_PALETTE_ORANGE), 0);
-      lv_timer_handler();
-  }
-
-  wifiClient.setTimeout(1);
-
-  bool connected = false;
-  if (strlen(mqtt_user) > 0) {
-    connected = mqtt.connect("esp32_panel", mqtt_user, mqtt_pass);
-  } else {
-    connected = mqtt.connect("esp32_panel");
-  }
-
-  if (connected) {
-    mqtt_retry_count = 0; 
-    for(int i=0; i<SWITCH_COUNT; i++) mqtt.subscribe(switches[i].topic_state);
-    mqtt.subscribe(mqtt_topic_notify);
-    
-    Serial.println("MQTT Connected!");
-  } else {
-      Serial.print("MQTT Connect Failed. RC=");
-      Serial.println(mqtt.state());
-  }
-}
-
 /* ================= UI CALLBACKS ================= */
 
 void create_page_dots(lv_obj_t *parent, int active_idx) {
@@ -1392,22 +1355,20 @@ int get_timeout_index(uint32_t ms) {
     for (int i = 0; i < 7; i++) {
         if (timeout_values[i] == ms) return i;
     }
-    return 6; // Default to "Never" if unknown
+    return 6;
 }
 
 void slider_bright_cb(lv_event_t * e) {
     lv_obj_t * slider = (lv_obj_t *)lv_event_get_target(e);
     int val = lv_slider_get_value(slider);
-    set_brightness(val); // Live preview
+    set_brightness(val);
 }
 
 void btn_save_disp_cb(lv_event_t * e) {
-    // 1. Read UI state
     int idx_saver = lv_dropdown_get_selected(dd_saver);
     int idx_sleep = lv_dropdown_get_selected(dd_sleep);
     int val_bright = lv_slider_get_value(slider_bright);
 
-    // 2. Get proposed values
     uint32_t prop_saver = timeout_values[idx_saver];
     uint32_t prop_sleep = timeout_values[idx_sleep];
     
@@ -1426,30 +1387,21 @@ void btn_save_disp_cb(lv_event_t * e) {
     }
     // Scenario B: Both are active, but Sleep <= Saver
     else if (prop_sleep > 0 && prop_sleep <= prop_saver) {
-        prop_sleep = 0; // Force Sleep to Never to prevent glitches
+        prop_sleep = 0;
         auto_corrected = true;
         warning_msg = "Conflict:\n\nDeep Sleep time must be\ngreater than Screensaver.\n\nDeep Sleep set to Never.";
     }
 
-    // 3. Update Globals with (potentially corrected) values
     setting_saver_ms = prop_saver;
     setting_sleep_ms = prop_sleep;
     setting_brightness = val_bright;
 
-    // 4. Save to Flash
     save_display_prefs();
     
-    // 5. Handle Exit or Warning
     if (auto_corrected) {
-        // Show popup explaining why we changed their setting
         show_notification_popup(warning_msg.c_str(), -1);
-        
-        // Note: We do NOT leave the screen immediately so they can read the popup.
-        // The popup close button will just close the popup, staying on Display settings.
-        // We need to manually update the Dropdown UI to reflect the change we just made.
         lv_dropdown_set_selected(dd_sleep, get_timeout_index(setting_sleep_ms));
     } else {
-        // Valid config, go back to menu
         lv_scr_load_anim(screen_settings_menu, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 200, 0, false);
     }
 }
@@ -1868,7 +1820,7 @@ void create_display_screen(lv_obj_t *parent) {
     slider_bright = lv_slider_create(cont);
     lv_obj_set_width(slider_bright, 400);
     lv_obj_align(slider_bright, LV_ALIGN_TOP_MID, 0, 40);
-    lv_slider_set_range(slider_bright, 5, 100); // Min 5% to prevent total blackout
+    lv_slider_set_range(slider_bright, 5, 100);
     lv_slider_set_value(slider_bright, setting_brightness, LV_ANIM_OFF);
     lv_obj_set_style_bg_color(slider_bright, lv_palette_main(LV_PALETTE_ORANGE), LV_PART_INDICATOR);
     lv_obj_add_event_cb(slider_bright, slider_bright_cb, LV_EVENT_VALUE_CHANGED, NULL);
@@ -2190,7 +2142,6 @@ void location_screen_load_cb(lv_event_t * e) {
     if(lbl_loc_current) lv_label_set_text(lbl_loc_current, statusStr.c_str());
 }
 
-// 2. UPDATED: Save Button (Updates Label Immediately)
 void btn_save_loc_cb(lv_event_t * e) {
     sysLoc.is_manual = true; 
     if (search_result_lat != 0.0) {
@@ -2951,9 +2902,6 @@ void loop() {
             lv_obj_del(msg_popup);
             msg_popup = NULL;
             selected_notification_index = -1;
-            
-            // Optional: If you want to ensure the screen doesn't dim immediately
-            // if the user was just reading:
             last_touch_ms = millis(); 
         }
     }
