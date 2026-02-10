@@ -131,6 +131,7 @@ lv_obj_t *cont_manual_loc;
 lv_obj_t *ta_city_search;
 lv_obj_t *lbl_search_result;
 lv_obj_t *kb_loc;
+lv_obj_t *lbl_loc_current;
 
 // Temp vars for the search result (before saving)
 float search_result_lat = 0.0;
@@ -1875,6 +1876,12 @@ void time_screen_load_cb(lv_event_t * e) {
 void sw_ntp_event_cb(lv_event_t * e) {
     lv_obj_t *sw = (lv_obj_t *)lv_event_get_target(e);
     bool is_on = lv_obj_has_state(sw, LV_STATE_CHECKED);
+
+    if (is_on && WiFi.status() != WL_CONNECTED) {
+        lv_obj_clear_state(sw, LV_STATE_CHECKED); // Force switch OFF
+        show_notification_popup("Error: \n\nConnect to WiFi first!", -1);
+        return;
+    }
     
     ntp_auto_update = is_on;
 
@@ -1900,45 +1907,70 @@ void btn_search_cb(lv_event_t * e) {
     perform_geocoding_search(txt);
 }
 
-void btn_save_loc_cb(lv_event_t * e) {
-    // 1. Save to Struct
-    sysLoc.is_manual = true; 
-    // Only update coords if we actually performed a search
-    if (search_result_lat != 0.0) {
-        sysLoc.lat = search_result_lat;
-        sysLoc.lon = search_result_lon;
-        strncpy(sysLoc.city, search_result_name, 31);
-    }
-    
-    // 2. Save to Flash
-    save_location_prefs();
-    
-    // 3. Trigger Updates
-    trigger_weather_update = true; // This will fetch new Timezone & Weather
-    
-    // 4. Return to Settings
-    lv_scr_load_anim(screen_settings_menu, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 200, 0, false);
-}
-
-void sw_auto_loc_cb(lv_event_t * e) {
-    bool auto_mode = lv_obj_has_state(sw_auto_location, LV_STATE_CHECKED);
-    
-    if (auto_mode) {
-        lv_obj_add_flag(cont_manual_loc, LV_OBJ_FLAG_HIDDEN);
-        sysLoc.is_manual = false;
-        save_location_prefs();
-        trigger_weather_update = true; // Trigger IP-Geolocation
-    } else {
-        lv_obj_clear_flag(cont_manual_loc, LV_OBJ_FLAG_HIDDEN);
-    }
-}
-
 void loc_ta_event_cb(lv_event_t * e) {
     lv_event_code_t code = lv_event_get_code(e);
     lv_obj_t * ta = (lv_obj_t *)lv_event_get_target(e);
     if(code == LV_EVENT_CLICKED || code == LV_EVENT_FOCUSED) {
         lv_keyboard_set_textarea(kb_loc, ta);
         lv_obj_clear_flag(kb_loc, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+// 1. NEW: Callback to refresh UI when screen opens
+void location_screen_load_cb(lv_event_t * e) {
+    // Update the Current City Label
+    String currStr = "Current: " + String(sysLoc.city);
+    if(lbl_loc_current) lv_label_set_text(lbl_loc_current, currStr.c_str());
+
+    // Ensure Switch matches internal state
+    if (!sysLoc.is_manual) {
+        lv_obj_add_state(sw_auto_location, LV_STATE_CHECKED);
+        lv_obj_add_flag(cont_manual_loc, LV_OBJ_FLAG_HIDDEN);
+    } else {
+        lv_obj_clear_state(sw_auto_location, LV_STATE_CHECKED);
+        lv_obj_clear_flag(cont_manual_loc, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+// 2. UPDATED: Save Button (Updates Label Immediately)
+void btn_save_loc_cb(lv_event_t * e) {
+    sysLoc.is_manual = true; 
+    if (search_result_lat != 0.0) {
+        sysLoc.lat = search_result_lat;
+        sysLoc.lon = search_result_lon;
+        strncpy(sysLoc.city, search_result_name, 31);
+        
+        // Update the label immediately so it's correct even before we leave
+        String currStr = "Current: " + String(sysLoc.city);
+        if(lbl_loc_current) lv_label_set_text(lbl_loc_current, currStr.c_str());
+    }
+    
+    save_location_prefs();
+    trigger_weather_update = true; 
+    
+    lv_scr_load_anim(screen_settings_menu, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 200, 0, false);
+}
+
+void sw_auto_loc_cb(lv_event_t * e) {
+    lv_obj_t *sw = (lv_obj_t *)lv_event_get_target(e); // Get switch object directly
+    bool auto_mode = lv_obj_has_state(sw, LV_STATE_CHECKED);
+    
+    // --- NEW: WiFi Enforcement Logic ---
+    if (auto_mode && WiFi.status() != WL_CONNECTED) {
+        lv_obj_clear_state(sw, LV_STATE_CHECKED); // Force switch OFF
+        show_notification_popup("Error: \n\nConnect to WiFi first!", -1);
+        return;
+    }
+    // -----------------------------------
+    
+    if (auto_mode) {
+        lv_obj_add_flag(cont_manual_loc, LV_OBJ_FLAG_HIDDEN);
+        sysLoc.is_manual = false;
+        save_location_prefs();
+        trigger_weather_update = true;
+    } else {
+        lv_obj_clear_flag(cont_manual_loc, LV_OBJ_FLAG_HIDDEN);
+        // Note: We don't save immediately here, we wait for user to pick a city
     }
 }
 
@@ -2034,6 +2066,9 @@ void save_location_prefs() {
 
 void create_location_screen(lv_obj_t *parent) {
     lv_obj_set_style_bg_color(parent, lv_color_white(), 0);
+    
+    // NEW: Add event to refresh data when screen opens
+    lv_obj_add_event_cb(parent, location_screen_load_cb, LV_EVENT_SCREEN_LOADED, NULL);
 
     // -- Header --
     lv_obj_t *btn_back = lv_btn_create(parent);
@@ -2057,7 +2092,7 @@ void create_location_screen(lv_obj_t *parent) {
     lv_obj_set_size(sw_auto_location, 50, 25);
     lv_obj_align(sw_auto_location, LV_ALIGN_TOP_RIGHT, -20, 60);
     lv_obj_add_event_cb(sw_auto_location, sw_auto_loc_cb, LV_EVENT_VALUE_CHANGED, NULL);
-    // Note: Switch is checked if Manual is FALSE
+    // Initial state check
     if (!sysLoc.is_manual) lv_obj_add_state(sw_auto_location, LV_STATE_CHECKED);
 
     lv_obj_t *lbl_auto = lv_label_create(parent);
@@ -2075,12 +2110,12 @@ void create_location_screen(lv_obj_t *parent) {
 
     if (!sysLoc.is_manual) lv_obj_add_flag(cont_manual_loc, LV_OBJ_FLAG_HIDDEN);
 
-    // Current Info
-    lv_obj_t *lbl_curr = lv_label_create(cont_manual_loc);
+    // Current Info - ASSIGN TO GLOBAL
+    lbl_loc_current = lv_label_create(cont_manual_loc);
     String currStr = "Current: " + String(sysLoc.city);
-    lv_label_set_text(lbl_curr, currStr.c_str());
-    lv_obj_set_style_text_color(lbl_curr, lv_color_black(), 0);
-    lv_obj_align(lbl_curr, LV_ALIGN_TOP_LEFT, 20, 0);
+    lv_label_set_text(lbl_loc_current, currStr.c_str());
+    lv_obj_set_style_text_color(lbl_loc_current, lv_color_black(), 0);
+    lv_obj_align(lbl_loc_current, LV_ALIGN_TOP_LEFT, 20, 0);
 
     // Search Bar
     ta_city_search = lv_textarea_create(cont_manual_loc);
