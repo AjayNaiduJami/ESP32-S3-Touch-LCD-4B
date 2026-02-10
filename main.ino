@@ -2877,71 +2877,150 @@ void setup() {
     last_wifi_check = millis();
 }
 
-void loop() {
-    lv_timer_handler();
-    delay(5);
+// --- HELPER FUNCTIONS FOR LOOP CLEANUP ---
 
-    if (trigger_weather_update) {
-        struct tm ti;
-        if (getLocalTime(&ti, 100)) { 
-            rtc.setDateTime(ti.tm_year + 1900, ti.tm_mon + 1, ti.tm_mday, ti.tm_hour, ti.tm_min, ti.tm_sec);
-            if (lv_scr_act() == screen_time_date) time_screen_load_cb(NULL);
+void handle_weather_timer() {
+    static uint32_t last_weather_update = 0;
+    // Update every 30 mins (1800000 ms) if WiFi is connected and Auto is ON
+    if (ntp_auto_update && WiFi.status() == WL_CONNECTED && (millis() - last_weather_update > 1800000)) {
+        last_weather_update = millis();
+        trigger_weather_update = true;
+    }
+}
+
+void handle_clock_update() {
+
+    // Auto-refresh weather every 30 mins
+    static uint32_t last_weather_update = 0;
+    if (ntp_auto_update && WiFi.status() == WL_CONNECTED && (millis() - last_weather_update > 1800000)) {
+        last_weather_update = millis();
+        trigger_weather_update = true;
+    }
+
+    if (millis() - lastMillis > 1000) {
+        lastMillis = millis();
+        RTC_DateTime dt = rtc.getDateTime();
+        
+        if (lv_scr_act() == screen_about) update_about_text();
+        
+        int h = dt.getHour();
+        const char* ampm = (h >= 12) ? "PM" : "AM";
+        if (h == 0) h = 12; else if (h > 12) h -= 12;
+        int m = dt.getMonth(); if (m < 1) m = 1; if (m > 12) m = 12;
+
+        char buf[20], buf_sleep[20], date[20];
+        snprintf(buf, sizeof(buf), "%02d:%02d %s", h, dt.getMinute(), ampm);
+        snprintf(buf_sleep, sizeof(buf_sleep), "%02d:%02d", h, dt.getMinute()); 
+        snprintf(date, sizeof(date), "%02d %s %04d", dt.getDay(), monthNames[m-1], dt.getYear());
+
+        if(clock_label) lv_label_set_text(clock_label, buf);
+
+        if (ui_uiScreenSleep) {
+            if(ui_uiLabelTime) lv_label_set_text(ui_uiLabelTime, buf_sleep);
+            if(ui_uiLabelDate) lv_label_set_text(ui_uiLabelDate, date);
+
+            if (initial_weather_fetched) {
+                String bigTempStr = String(current_temp, 0) + "°";
+                lv_label_set_text(ui_uiLabelTemp, bigTempStr.c_str());
+            }
+            
+            // Handle Alerts Badge
+            int count = get_notification_count();
+            lv_obj_t* notify_chip = (lv_obj_t*)lv_obj_get_user_data(ui_uiPanelAlertsLabel);
+
+            if (ui_uiPanelAlertsLabel != NULL) {
+                if (count > 0) {
+                    lv_obj_clear_flag(ui_uiPanelAlertsLabel, LV_OBJ_FLAG_HIDDEN);
+                    String n = String(LV_SYMBOL_BELL) + "  " + String(count) + " Alerts";
+                    lv_label_set_text(ui_uiPanelAlertsLabel, n.c_str());
+                } else {
+                    lv_obj_add_flag(ui_uiPanelAlertsLabel, LV_OBJ_FLAG_HIDDEN);
+                }
+            }
+            
+            // Handle Icons (WiFi/MQTT/Bat)
+            update_status_icons(); 
         }
-        fetch_weather_data();
-        trigger_weather_update = false;
     }
+}
 
-    if (notification_ui_dirty) {
-        refresh_notification_list();
-        notification_ui_dirty = false;
+void update_status_icons() {
+    // WiFi Icon
+    if (ui_uiIconWifi != NULL) {
+        if(current_wifi_state == WIFI_CONNECTED) lv_obj_set_style_text_color(ui_uiIconWifi, lv_color_white(), 0);
+        else if (current_wifi_state == WIFI_CONNECTING) lv_obj_set_style_text_color(ui_uiIconWifi, lv_palette_main(LV_PALETTE_ORANGE), 0);
+        else lv_obj_set_style_text_color(ui_uiIconWifi, lv_palette_main(LV_PALETTE_RED), 0);
     }
-
-    if (msg_popup != NULL) {
-        if (millis() - popup_start_time > 10000) {
-            Serial.println("Auto-closing popup");
-            lv_obj_del(msg_popup);
-            msg_popup = NULL;
-            selected_notification_index = -1;
-            last_touch_ms = millis(); 
+    // MQTT Icon
+    if (ui_uiIconMqtt != NULL) {
+        if (mqtt_enabled && mqtt.connected()) lv_obj_set_style_text_color(ui_uiIconMqtt, lv_color_white(), 0);
+        else if (mqtt_enabled) lv_obj_set_style_text_color(ui_uiIconMqtt, lv_palette_main(LV_PALETTE_ORANGE), 0);
+        else lv_obj_set_style_text_color(ui_uiIconMqtt, lv_palette_main(LV_PALETTE_RED), 0);
+    }
+    // Battery Icon
+    if (ui_uiIconBat != NULL) {
+        if (power.isBatteryConnect()) {
+            int pct = power.getBatteryPercent();
+            String batText = "";
+            if (pct > 95) {
+                lv_obj_set_style_text_color(ui_uiIconBat, lv_color_white(), 0);
+                batText = String(LV_SYMBOL_BATTERY_FULL);
+            }
+            else if (pct > 70 && pct <= 95) {
+                lv_obj_set_style_text_color(ui_uiIconBat, lv_color_white(), 0);
+                batText = String(LV_SYMBOL_BATTERY_3);
+            }
+            else if (pct > 40 && pct <= 70) {
+                lv_obj_set_style_text_color(ui_uiIconBat, lv_color_white(), 0);
+                batText = String(LV_SYMBOL_BATTERY_2);
+            }
+            else if (pct > 15 && pct <= 40) {
+                lv_obj_set_style_text_color(ui_uiIconBat, lv_palette_main(LV_PALETTE_YELLOW), 0);
+                batText = String(LV_SYMBOL_BATTERY_1);
+            }
+            else if (pct > 5 && pct <= 15) {
+                lv_obj_set_style_text_color(ui_uiIconBat, lv_palette_main(LV_PALETTE_RED), 0);
+                batText = String(LV_SYMBOL_BATTERY_1);
+            } else {
+                lv_obj_set_style_text_color(ui_uiIconBat, lv_palette_main(LV_PALETTE_RED), 0);
+                batText = String(LV_SYMBOL_BATTERY_EMPTY);
+            }
+            if(power.isCharging()) {
+                lv_obj_set_style_text_color(ui_uiIconBat, lv_palette_main(LV_PALETTE_YELLOW), 0);
+                batText = String(LV_SYMBOL_CHARGE);
+            }
+            lv_label_set_text(ui_uiIconBat, batText.c_str());
+        } else {
+            lv_obj_set_style_text_color(ui_uiIconBat, lv_color_white(), 0);
+            lv_label_set_text(ui_uiIconBat, LV_SYMBOL_USB);
         }
     }
+}
 
-    check_sensor_logic();
-
+void handle_display_state() {
     unsigned long now = millis();
-    unsigned long diff = 0;
-    if (now >= last_touch_ms) diff = now - last_touch_ms;
+    unsigned long diff = (now >= last_touch_ms) ? (now - last_touch_ms) : 0;
 
-    // STATE 1: DEEP SLEEP (Screen OFF)
+    // 1. DEEP SLEEP
     if (setting_sleep_ms > 0 && diff > setting_sleep_ms) {
         if (!is_backlight_off) {
             Serial.println(">>> SLEEP (OFF) <<<");
-            
-            // EXPLICITLY TURN OFF (Override set_brightness mapping)
             ledcWrite(LCD_BL_PIN, 255); 
-            
             is_backlight_off = true;      
             screensaver_force_bright = false;
         }
-        if (lv_scr_act() != ui_uiScreenSleep && ui_uiScreenSleep != NULL) {
-            lv_scr_load(ui_uiScreenSleep); 
-        }
+        if (lv_scr_act() != ui_uiScreenSleep && ui_uiScreenSleep != NULL) lv_scr_load(ui_uiScreenSleep); 
     }
-    // STATE 2: SCREENSAVER (Dimmed)
+    // 2. SCREENSAVER
     else if (setting_saver_ms > 0 && diff > setting_saver_ms) {
         is_backlight_off = false; 
         if (lv_scr_act() != ui_uiScreenSleep && ui_uiScreenSleep != NULL) {
             Serial.println(">>> SCREENSAVER <<<");
             lv_scr_load(ui_uiScreenSleep); 
         }
-        
-        if (screensaver_force_bright) {
-            set_brightness(setting_brightness); 
-        } else {
-            set_brightness(0); 
-        }
+        set_brightness(screensaver_force_bright ? setting_brightness : 0);
     }
-    // STATE 3: ACTIVE (User Brightness)
+    // 3. ACTIVE
     else {
         if (is_backlight_off || lv_scr_act() == ui_uiScreenSleep) {
             Serial.println(">>> WAKE <<<");
@@ -2950,136 +3029,119 @@ void loop() {
             if(msg_popup) { lv_obj_del(msg_popup); msg_popup = NULL; }
         }
         set_brightness(setting_brightness); 
-        
         is_backlight_off = false;
         screensaver_force_bright = false;
     }
+}
 
+void handle_wifi_state() {
     switch (current_wifi_state) {
-        case WIFI_SCANNING: {
-            lv_timer_handler(); 
-            delay(50); 
-            WiFi.disconnect();
-            WiFi.mode(WIFI_STA);
-            delay(100);
-
-            int n = WiFi.scanNetworks(false, false); 
+        case WIFI_SCANNING:
+            lv_timer_handler(); delay(50);
+            WiFi.disconnect(); WiFi.mode(WIFI_STA); delay(100);
+            {
+                int n = WiFi.scanNetworks(false, false); 
             
-            if(scan_list_ui) {
-                lv_obj_clean(scan_list_ui);
-                lv_obj_t * btn_cancel = lv_list_add_btn(scan_list_ui, LV_SYMBOL_CLOSE, " Close");
-                lv_obj_set_style_bg_color(btn_cancel, lv_palette_lighten(LV_PALETTE_GREY, 3), 0); 
-                lv_obj_set_style_text_color(btn_cancel, lv_color_black(), 0);
-                lv_obj_add_event_cb(btn_cancel, [](lv_event_t* e){ wipe_wifi_popup(); }, LV_EVENT_CLICKED, NULL);
+                if(scan_list_ui) {
+                    lv_obj_clean(scan_list_ui);
+                    lv_obj_t * btn_cancel = lv_list_add_btn(scan_list_ui, LV_SYMBOL_CLOSE, " Close");
+                    lv_obj_set_style_bg_color(btn_cancel, lv_palette_lighten(LV_PALETTE_GREY, 3), 0); 
+                    lv_obj_set_style_text_color(btn_cancel, lv_color_black(), 0);
+                    lv_obj_add_event_cb(btn_cancel, [](lv_event_t* e){ wipe_wifi_popup(); }, LV_EVENT_CLICKED, NULL);
 
-                if (n == 0) {
-                    lv_obj_t * txt = lv_list_add_text(scan_list_ui, "No networks found");
-                    lv_obj_set_style_text_color(txt, lv_palette_main(LV_PALETTE_GREY), 0);
-                    if(lbl_wifi_status) lv_label_set_text(lbl_wifi_status, "Status: None Found");
-                } else if (n > 0) {
-                    lv_obj_t * txt = lv_list_add_text(scan_list_ui, "Select Network:");
-                    lv_obj_set_style_bg_color(txt, lv_palette_lighten(LV_PALETTE_GREY, 3), 0); 
-                    lv_obj_set_style_text_color(txt, lv_color_black(), 0);
-                    for (int i = 0; i < n; ++i) {
-                        String ssidName = WiFi.SSID(i);
-                        if(ssidName.length() > 0) {
-                            lv_obj_t *btn = lv_list_add_btn(scan_list_ui, LV_SYMBOL_WIFI, ssidName.c_str());
-                            lv_obj_set_style_text_color(btn, lv_color_black(), 0);
-                            lv_obj_set_style_bg_color(btn, lv_palette_lighten(LV_PALETTE_GREY, 3), 0);
-                            lv_obj_set_style_border_side(btn, LV_BORDER_SIDE_BOTTOM, 0);
-                            lv_obj_set_style_border_width(btn, 1, 0);
-                            lv_obj_set_style_border_color(btn, lv_palette_lighten(LV_PALETTE_GREY, 4), 0);
-                            lv_obj_add_event_cb(btn, wifi_list_btn_cb, LV_EVENT_CLICKED, NULL);
+                    if (n == 0) {
+                        lv_obj_t * txt = lv_list_add_text(scan_list_ui, "No networks found");
+                        lv_obj_set_style_text_color(txt, lv_palette_main(LV_PALETTE_GREY), 0);
+                        if(lbl_wifi_status) lv_label_set_text(lbl_wifi_status, "Status: None Found");
+                    } else if (n > 0) {
+                        lv_obj_t * txt = lv_list_add_text(scan_list_ui, "Select Network:");
+                        lv_obj_set_style_bg_color(txt, lv_palette_lighten(LV_PALETTE_GREY, 3), 0); 
+                        lv_obj_set_style_text_color(txt, lv_color_black(), 0);
+                        for (int i = 0; i < n; ++i) {
+                            String ssidName = WiFi.SSID(i);
+                            if(ssidName.length() > 0) {
+                                lv_obj_t *btn = lv_list_add_btn(scan_list_ui, LV_SYMBOL_WIFI, ssidName.c_str());
+                                lv_obj_set_style_text_color(btn, lv_color_black(), 0);
+                                lv_obj_set_style_bg_color(btn, lv_palette_lighten(LV_PALETTE_GREY, 3), 0);
+                                lv_obj_set_style_border_side(btn, LV_BORDER_SIDE_BOTTOM, 0);
+                                lv_obj_set_style_border_width(btn, 1, 0);
+                                lv_obj_set_style_border_color(btn, lv_palette_lighten(LV_PALETTE_GREY, 4), 0);
+                                lv_obj_add_event_cb(btn, wifi_list_btn_cb, LV_EVENT_CLICKED, NULL);
+                            }
                         }
+                        if(lbl_wifi_status) {
+                            lv_label_set_text(lbl_wifi_status, "Status: Scan Complete");
+                            lv_obj_set_style_text_color(lbl_wifi_status, lv_palette_main(LV_PALETTE_GREEN), 0);
+                        }
+                    } else {
+                        lv_obj_t * txt = lv_list_add_text(scan_list_ui, "Scan Failed");
+                        lv_obj_set_style_text_color(txt, lv_palette_main(LV_PALETTE_RED), 0);
+                        if(lbl_wifi_status) lv_label_set_text(lbl_wifi_status, "Status: Error");
                     }
-                    if(lbl_wifi_status) {
-                        lv_label_set_text(lbl_wifi_status, "Status: Scan Complete");
-                        lv_obj_set_style_text_color(lbl_wifi_status, lv_palette_main(LV_PALETTE_GREEN), 0);
-                    }
-                } else {
-                    lv_obj_t * txt = lv_list_add_text(scan_list_ui, "Scan Failed");
-                    lv_obj_set_style_text_color(txt, lv_palette_main(LV_PALETTE_RED), 0);
-                    if(lbl_wifi_status) lv_label_set_text(lbl_wifi_status, "Status: Error");
                 }
             }
             WiFi.scanDelete(); 
             current_wifi_state = WIFI_IDLE; 
             break;
-        }
-        
-        case WIFI_CONNECTING: {
-            wl_status_t status = WiFi.status();
-            
-            if (status == WL_CONNECTED) {
-                current_wifi_state = WIFI_CONNECTED;
-                hide_loader();
-                
-                if(lbl_wifi_status) {
-                    lv_label_set_text(lbl_wifi_status, "Status: Connected");
-                    lv_obj_set_style_text_color(lbl_wifi_status, lv_palette_main(LV_PALETTE_GREEN), 0);
-                }
-                save_current_network_to_list();
-                struct tm ti;
-                if (ntp_auto_update && getLocalTime(&ti, 2000)) { 
-                    rtc.setDateTime(ti.tm_year + 1900, ti.tm_mon + 1, ti.tm_mday, ti.tm_hour, ti.tm_min, ti.tm_sec);
-                    trigger_weather_update = true;
-                }
-                if (strlen(mqtt_host) > 0) {
-                    mqtt_enabled = true;
-                    mqtt_retry_count = 0;
-                    if(sw_mqtt_enable) lv_obj_add_state(sw_mqtt_enable, LV_STATE_CHECKED);
-                    if(cont_ha_inputs) lv_obj_clear_flag(cont_ha_inputs, LV_OBJ_FLAG_HIDDEN);
-                    prefs.begin("sys_config", false);
-                    prefs.putBool("mqtt_en", true);
-                    prefs.end();
-                }
-            } 
-            else if (status == WL_CONNECT_FAILED) {
-                Serial.println("WiFi Auth Failed. Disabling to prevent glitches.");
-                hide_loader();
-                WiFi.disconnect(); 
-                
-                current_wifi_state = WIFI_IDLE;
-                last_wifi_check = millis(); 
 
-                if(lbl_wifi_status) {
-                    lv_label_set_text(lbl_wifi_status, "Error: Wrong Password");
-                    lv_obj_set_style_text_color(lbl_wifi_status, lv_palette_main(LV_PALETTE_RED), 0);
+        case WIFI_CONNECTING:
+            {
+                wl_status_t status = WiFi.status();
+                if (status == WL_CONNECTED) {
+                    current_wifi_state = WIFI_CONNECTED;
+                    hide_loader();
+                    if(lbl_wifi_status) {
+                        lv_label_set_text(lbl_wifi_status, "Status: Connected");
+                        lv_obj_set_style_text_color(lbl_wifi_status, lv_palette_main(LV_PALETTE_GREEN), 0);
+                    }
+                    save_current_network_to_list();
+                    // Trigger Time/MQTT setups
+                    struct tm ti;
+                    if (ntp_auto_update && getLocalTime(&ti, 2000)) { 
+                        rtc.setDateTime(ti.tm_year + 1900, ti.tm_mon + 1, ti.tm_mday, ti.tm_hour, ti.tm_min, ti.tm_sec);
+                        trigger_weather_update = true;
+                    }
+                    if (strlen(mqtt_host) > 0) {
+                        mqtt_enabled = true; mqtt_retry_count = 0;
+                        if(sw_mqtt_enable) lv_obj_add_state(sw_mqtt_enable, LV_STATE_CHECKED);
+                        if(cont_ha_inputs) lv_obj_clear_flag(cont_ha_inputs, LV_OBJ_FLAG_HIDDEN);
+                        prefs.begin("sys_config", false); prefs.putBool("mqtt_en", true); prefs.end();
+                    }
+                } 
+                else if (status == WL_CONNECT_FAILED) {
+                    Serial.println("WiFi Auth Failed. Disabling to prevent glitches.");
+                    hide_loader();
+                    WiFi.disconnect();
+                    current_wifi_state = WIFI_IDLE;
+                    last_wifi_check = millis(); 
+                    if(lbl_wifi_status) {
+                        lv_label_set_text(lbl_wifi_status, "Error: Wrong Password");
+                        lv_obj_set_style_text_color(lbl_wifi_status, lv_palette_main(LV_PALETTE_RED), 0);
+                    }
+                    show_notification_popup("Connection Failed:\nIncorrect Password.", -1);
                 }
-                
-                show_notification_popup("Connection Failed:\nIncorrect Password.", -1);
-            }
-            else if (status == WL_NO_SSID_AVAIL) {
-                hide_loader();
-                current_wifi_state = WIFI_IDLE;
-                WiFi.disconnect();
-                if(lbl_wifi_status) {
-                    lv_label_set_text(lbl_wifi_status, "Error: SSID Not Found");
-                    lv_obj_set_style_text_color(lbl_wifi_status, lv_palette_main(LV_PALETTE_RED), 0);
+                else if (status == WL_NO_SSID_AVAIL) {
+                    hide_loader();
+                    current_wifi_state = WIFI_IDLE;
+                    WiFi.disconnect();
+                    if(lbl_wifi_status) {
+                        lv_label_set_text(lbl_wifi_status, "Error: SSID Not Found");
+                        lv_obj_set_style_text_color(lbl_wifi_status, lv_palette_main(LV_PALETTE_RED), 0);
+                    }
                 }
-            }
-            else if (millis() - wifi_connect_start > 15000) {
-                hide_loader();
-                current_wifi_state = WIFI_IDLE;
-                WiFi.disconnect();
-                if(lbl_wifi_status) {
-                    lv_label_set_text(lbl_wifi_status, "Error: Timeout");
-                    lv_obj_set_style_text_color(lbl_wifi_status, lv_palette_main(LV_PALETTE_RED), 0);
+                else if (millis() - wifi_connect_start > 15000) {
+                    hide_loader();
+                    current_wifi_state = WIFI_IDLE;
+                    WiFi.disconnect();
+                    if(lbl_wifi_status) {
+                        lv_label_set_text(lbl_wifi_status, "Error: Timeout");
+                        lv_obj_set_style_text_color(lbl_wifi_status, lv_palette_main(LV_PALETTE_RED), 0);
+                    }
                 }
             }
             break;
-        }
 
-        case WIFI_CONNECTED: {
-            if(WiFi.status() != WL_CONNECTED) {
-                current_wifi_state = WIFI_CONNECTING; 
-                wifi_connect_start = millis(); 
-                mqtt.disconnect(); 
-            }
-            break;
-        }
-        
-        case WIFI_IDLE: {
+        case WIFI_IDLE:
             if (wifi_enabled && WiFi.status() != WL_CONNECTED) {
                 if (millis() - last_wifi_check > WIFI_RECONNECT_INTERVAL) {
                     last_wifi_check = millis();
@@ -3091,41 +3153,62 @@ void loop() {
                 }
             }
             break;
-        }
-        default: break;
+            
+        case WIFI_CONNECTED:
+            if(WiFi.status() != WL_CONNECTED) {
+                current_wifi_state = WIFI_CONNECTING; 
+                wifi_connect_start = millis(); 
+                mqtt.disconnect(); 
+            }
+            break;
     }
+}
 
-  // ================= MQTT LOGIC =================
+void handle_ha_screen_ui() {
+    // Only run this if we are currently looking at the HA screen
+    if (lv_scr_act() == screen_ha && lbl_ha_status) {
+        if (!mqtt_enabled) {
+            const char* cur_txt = lv_label_get_text(lbl_ha_status);
+            // Don't overwrite error messages (like "Connection Failed")
+            if(strstr(cur_txt, "Error") == NULL) {
+                lv_label_set_text(lbl_ha_status, "Status: Disabled");
+                lv_obj_set_style_text_color(lbl_ha_status, lv_palette_main(LV_PALETTE_GREY), 0);
+            }
+        } else {
+            if (mqtt.connected()) {
+                lv_label_set_text(lbl_ha_status, "Status: Connected");
+                lv_obj_set_style_text_color(lbl_ha_status, lv_palette_main(LV_PALETTE_GREEN), 0);
+            } else {
+                lv_label_set_text(lbl_ha_status, "Status: Connecting...");
+                lv_obj_set_style_text_color(lbl_ha_status, lv_palette_main(LV_PALETTE_ORANGE), 0);
+            }
+        }
+    }
+}
+
+void handle_mqtt_loop() {
     if (current_wifi_state == WIFI_CONNECTED && mqtt_enabled) {
         if (!mqtt.connected()) {
             if (millis() - last_mqtt_retry > 2000) {
                 last_mqtt_retry = millis();
                 
                 if (mqtt_retry_count >= 3) {
-                    Serial.println(">> MQTT Failed 3 times. Disabling.");
-                    mqtt_enabled = false;
-                    mqtt_retry_count = 0; 
-                    prefs.begin("sys_config", false);
-                    prefs.putBool("mqtt_en", false);
-                    prefs.end();
+                    Serial.println("MQTT Failed. Disabling.");
+                    mqtt_enabled = false; mqtt_retry_count = 0; 
+                    prefs.begin("sys_config", false); prefs.putBool("mqtt_en", false); prefs.end();
                     if(lbl_ha_status) {
                         lv_label_set_text(lbl_ha_status, "Status: Disabled (Failed)");
                         lv_obj_set_style_text_color(lbl_ha_status, lv_palette_main(LV_PALETTE_RED), 0);
                     }
                     add_notification("MQTT Failed: Disabled");
-                } 
-                else {
+                } else {
                     mqtt_retry_count++;
-                    Serial.printf("MQTT Attempt %d/3...\n", mqtt_retry_count);
                     if(lbl_ha_status) {
                         lv_label_set_text(lbl_ha_status, "Status: Connecting...");
                         lv_obj_set_style_text_color(lbl_ha_status, lv_palette_main(LV_PALETTE_ORANGE), 0);
                     }
                     wifiClient.setTimeout(1000); 
-
-                    bool connected = false;
-                    if(strlen(mqtt_user) > 0) connected = mqtt.connect("esp32_panel", mqtt_user, mqtt_pass);
-                    else connected = mqtt.connect("esp32_panel");
+                    bool connected = (strlen(mqtt_user) > 0) ? mqtt.connect("esp32_panel", mqtt_user, mqtt_pass) : mqtt.connect("esp32_panel");
                     
                     if(connected) {
                         Serial.println("MQTT Success!");
@@ -3140,135 +3223,9 @@ void loop() {
             mqtt_retry_count = 0; 
         }
     }
+}
 
-    // --- UI UPDATES ---
-    // Auto-refresh weather every 30 mins
-    static uint32_t last_weather_update = 0;
-    if (ntp_auto_update && WiFi.status() == WL_CONNECTED && (millis() - last_weather_update > 1800000)) {
-        last_weather_update = millis();
-        trigger_weather_update = true;
-    }
-
-    if (millis() - lastMillis > 1000) {
-        lastMillis = millis();
-        RTC_DateTime dt = rtc.getDateTime();
-        if (lv_scr_act() == screen_about) update_about_text();
-        
-        int h = dt.getHour();
-        const char* ampm = (h >= 12) ? "PM" : "AM";
-        if (h == 0) h = 12; else if (h > 12) h -= 12;
-        int m = dt.getMonth(); if (m < 1) m = 1; if (m > 12) m = 12;
-
-        char buf[20], buf_sleep[20], date[20];
-        
-        snprintf(buf, sizeof(buf), "%02d:%02d %s", h, dt.getMinute(), ampm);
-        snprintf(buf_sleep, sizeof(buf_sleep), "%02d:%02d", h, dt.getMinute()); 
-        snprintf(date, sizeof(date), "%02d %s %04d", dt.getDay(), monthNames[m-1], dt.getYear());
-
-        if(clock_label) lv_label_set_text(clock_label, buf);
-
-        if (ui_uiScreenSleep) {
-        if(ui_uiLabelTime) lv_label_set_text(ui_uiLabelTime, buf_sleep);
-        if(ui_uiLabelDate) lv_label_set_text(ui_uiLabelDate, date);
-
-        if (initial_weather_fetched) {
-            String bigTempStr = String(current_temp, 0) + "°";
-            lv_label_set_text(ui_uiLabelTemp, bigTempStr.c_str());
-            }
-
-        int count = get_notification_count();
-        lv_obj_t* notify_chip = (lv_obj_t*)lv_obj_get_user_data(ui_uiPanelAlertsLabel);
-
-        if (ui_uiPanelAlertsLabel != NULL) {
-            if (count > 0) {
-                lv_obj_clear_flag(ui_uiPanelAlertsLabel, LV_OBJ_FLAG_HIDDEN);
-                String n = String(LV_SYMBOL_BELL) + "  " + String(count) + " Alerts";
-                lv_label_set_text(ui_uiPanelAlertsLabel, n.c_str());
-            } else {
-                lv_obj_add_flag(ui_uiPanelAlertsLabel, LV_OBJ_FLAG_HIDDEN);
-            }
-        }
-        
-        if (ui_uiIconWifi != NULL) {
-            if(current_wifi_state == WIFI_CONNECTED) {
-                lv_obj_set_style_text_color(ui_uiIconWifi, lv_color_white(), 0);
-            } else if (current_wifi_state == WIFI_CONNECTING) {
-                lv_obj_set_style_text_color(ui_uiIconWifi, lv_palette_main(LV_PALETTE_ORANGE), 0);
-            } else {
-                lv_obj_set_style_text_color(ui_uiIconWifi, lv_palette_main(LV_PALETTE_RED), 0);
-            }
-        }
-
-        if (ui_uiIconMqtt != NULL) {
-            if (mqtt_enabled) {
-                if (mqtt.connected()) {
-                    lv_obj_set_style_text_color(ui_uiIconMqtt, lv_color_white(), 0);
-                } else {
-                    lv_obj_set_style_text_color(ui_uiIconMqtt, lv_palette_main(LV_PALETTE_ORANGE), 0);
-                }
-            } else {
-                lv_obj_set_style_text_color(ui_uiIconMqtt, lv_palette_main(LV_PALETTE_RED), 0);
-            }
-        }
-        
-        if (ui_uiIconBat != NULL) {
-            if (power.isBatteryConnect()) {
-                int pct = power.getBatteryPercent();
-                String batText = "";
-                if (pct > 95) {
-                    lv_obj_set_style_text_color(ui_uiIconBat, lv_color_white(), 0);
-                    batText = String(LV_SYMBOL_BATTERY_FULL);
-                }
-                else if (pct > 70 && pct <= 95) {
-                    lv_obj_set_style_text_color(ui_uiIconBat, lv_color_white(), 0);
-                    batText = String(LV_SYMBOL_BATTERY_3);
-                }
-                else if (pct > 40 && pct <= 70) {
-                    lv_obj_set_style_text_color(ui_uiIconBat, lv_color_white(), 0);
-                    batText = String(LV_SYMBOL_BATTERY_2);
-                }
-                else if (pct > 15 && pct <= 40) {
-                    lv_obj_set_style_text_color(ui_uiIconBat, lv_palette_main(LV_PALETTE_YELLOW), 0);
-                    batText = String(LV_SYMBOL_BATTERY_1);
-                }
-                else if (pct > 5 && pct <= 15) {
-                    lv_obj_set_style_text_color(ui_uiIconBat, lv_palette_main(LV_PALETTE_RED), 0);
-                    batText = String(LV_SYMBOL_BATTERY_1);
-                } else {
-                    lv_obj_set_style_text_color(ui_uiIconBat, lv_palette_main(LV_PALETTE_RED), 0);
-                    batText = String(LV_SYMBOL_BATTERY_EMPTY);
-                }
-                if(power.isCharging()) {
-                    lv_obj_set_style_text_color(ui_uiIconBat, lv_palette_main(LV_PALETTE_YELLOW), 0);
-                    batText = String(LV_SYMBOL_CHARGE);
-                }
-                lv_label_set_text(ui_uiIconBat, batText.c_str());
-            } else {
-                lv_obj_set_style_text_color(ui_uiIconBat, lv_color_white(), 0);
-                lv_label_set_text(ui_uiIconBat, LV_SYMBOL_USB);
-            }
-        }
-        }
-    }
-
-    if (lv_scr_act() == screen_ha && lbl_ha_status) {
-        if (!mqtt_enabled) {
-                const char* cur_txt = lv_label_get_text(lbl_ha_status);
-                if(strstr(cur_txt, "Error") == NULL) {
-                    lv_label_set_text(lbl_ha_status, "Status: Disabled");
-                    lv_obj_set_style_text_color(lbl_ha_status, lv_palette_main(LV_PALETTE_GREY), 0);
-                }
-        } else {
-            if (mqtt.connected()) {
-                lv_label_set_text(lbl_ha_status, "Status: Connected");
-                lv_obj_set_style_text_color(lbl_ha_status, lv_palette_main(LV_PALETTE_GREEN), 0);
-            } else {
-                lv_label_set_text(lbl_ha_status, "Status: Connecting...");
-                lv_obj_set_style_text_color(lbl_ha_status, lv_palette_main(LV_PALETTE_ORANGE), 0);
-            }
-        }
-    }
-
+void update_power_screen_ui() {
     if (lv_scr_act() == screen_power) {
       char pwr_buf[256];
       char net_buf[128];
@@ -3334,4 +3291,61 @@ void loop() {
       snprintf(final_buf, sizeof(final_buf), "%s\n%s\n%s", pwr_buf, net_buf, mqtt_buf);      
       lv_label_set_text(power_info_label, final_buf);
   }
+}
+
+// --- MAIN LOOP ---
+
+void loop() {
+    lv_timer_handler();
+    delay(5);
+
+    // 1. Weather/Time Sync Trigger
+    if (trigger_weather_update) {
+        struct tm ti;
+        if (getLocalTime(&ti, 100)) { 
+            rtc.setDateTime(ti.tm_year + 1900, ti.tm_mon + 1, ti.tm_mday, ti.tm_hour, ti.tm_min, ti.tm_sec);
+            if (lv_scr_act() == screen_time_date) time_screen_load_cb(NULL);
+        }
+        fetch_weather_data();
+        trigger_weather_update = false;
+    }
+
+    // 2. UI Cleanup
+    if (notification_ui_dirty) {
+        refresh_notification_list();
+        notification_ui_dirty = false;
+    }
+
+    // 3. Popup Auto-close
+    if (msg_popup != NULL && (millis() - popup_start_time > 10000)) {
+        Serial.println("Auto-closing popup");
+        lv_obj_del(msg_popup);
+        msg_popup = NULL;
+        selected_notification_index = -1;
+        last_touch_ms = millis(); 
+    }
+
+    // 4. Sensors
+    check_sensor_logic();
+
+    // 5. Display State Machine (Sleep/Saver/Active)
+    handle_display_state();
+
+    // 6. WiFi State Machine
+    handle_wifi_state();
+
+    // 7. MQTT Logic
+    handle_mqtt_loop();
+    
+    // 8. Background Timers (Weather Auto-Refresh)
+    handle_weather_timer();
+
+    // 9. Clock & Icons Update
+    handle_clock_update();
+
+    // 10. Specific Screen UI Updates
+    handle_ha_screen_ui();
+    
+    // 11. Info Screen Update (Only if active)
+    update_power_screen_ui();
 }
