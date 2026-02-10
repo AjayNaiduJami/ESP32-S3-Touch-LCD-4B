@@ -209,6 +209,7 @@ lv_obj_t *kb_ha;
 // Popup Handles
 lv_obj_t *msg_popup = NULL; 
 int selected_notification_index = -1;
+uint32_t popup_start_time = 0;
 
 // Notification Data
 char notification_history[MAX_NOTIFICATIONS][64]; 
@@ -745,6 +746,8 @@ void show_notification_popup(const char* text, int index) {
     if(msg_popup) lv_obj_del(msg_popup); 
     selected_notification_index = index;
 
+    popup_start_time = millis();
+
     msg_popup = lv_obj_create(lv_layer_top());
     lv_obj_set_size(msg_popup, 360, 300);
     lv_obj_align(msg_popup, LV_ALIGN_CENTER, 0, 0);
@@ -799,7 +802,9 @@ void show_notification_popup(const char* text, int index) {
 }
 
 void show_clear_all_popup() {
-    if(msg_popup) lv_obj_del(msg_popup); 
+    if(msg_popup) lv_obj_del(msg_popup);
+
+    popup_start_time = millis();
 
     msg_popup = lv_obj_create(lv_layer_top());
     lv_obj_set_size(msg_popup, 320, 220);
@@ -1402,23 +1407,51 @@ void btn_save_disp_cb(lv_event_t * e) {
     int idx_sleep = lv_dropdown_get_selected(dd_sleep);
     int val_bright = lv_slider_get_value(slider_bright);
 
-    // 2. Update Globals
-    setting_saver_ms = timeout_values[idx_saver];
-    setting_sleep_ms = timeout_values[idx_sleep];
+    // 2. Get proposed values
+    uint32_t prop_saver = timeout_values[idx_saver];
+    uint32_t prop_sleep = timeout_values[idx_sleep];
+    
+    bool auto_corrected = false;
+    String warning_msg = "";
+
+    // --- VALIDATION LOGIC ---
+
+    // Scenario A: Screensaver is "Never" (0)
+    if (prop_saver == 0) {
+        if (prop_sleep != 0) {
+            prop_sleep = 0; // Force Sleep to Never
+            auto_corrected = true;
+            warning_msg = "Conflict:\n\nIf Screensaver is Never,\nDeep Sleep must be Never.";
+        }
+    }
+    // Scenario B: Both are active, but Sleep <= Saver
+    else if (prop_sleep > 0 && prop_sleep <= prop_saver) {
+        prop_sleep = 0; // Force Sleep to Never to prevent glitches
+        auto_corrected = true;
+        warning_msg = "Conflict:\n\nDeep Sleep time must be\ngreater than Screensaver.\n\nDeep Sleep set to Never.";
+    }
+
+    // 3. Update Globals with (potentially corrected) values
+    setting_saver_ms = prop_saver;
+    setting_sleep_ms = prop_sleep;
     setting_brightness = val_bright;
 
-    // DEBUG: Confirm values before saving
-    Serial.println("--- Saving Display Settings ---");
-    Serial.printf("Brightness: %d%%\n", setting_brightness);
-    Serial.printf("Screensaver: %u ms (Index %d)\n", setting_saver_ms, idx_saver);
-    Serial.printf("Deep Sleep:  %u ms (Index %d)\n", setting_sleep_ms, idx_sleep);
-    Serial.println("-------------------------------");
-
-    // 3. Save to Flash
+    // 4. Save to Flash
     save_display_prefs();
     
-    // 4. Exit
-    lv_scr_load_anim(screen_settings_menu, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 200, 0, false);
+    // 5. Handle Exit or Warning
+    if (auto_corrected) {
+        // Show popup explaining why we changed their setting
+        show_notification_popup(warning_msg.c_str(), -1);
+        
+        // Note: We do NOT leave the screen immediately so they can read the popup.
+        // The popup close button will just close the popup, staying on Display settings.
+        // We need to manually update the Dropdown UI to reflect the change we just made.
+        lv_dropdown_set_selected(dd_sleep, get_timeout_index(setting_sleep_ms));
+    } else {
+        // Valid config, go back to menu
+        lv_scr_load_anim(screen_settings_menu, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 200, 0, false);
+    }
 }
 
 /* ================= SCREEN BUILDERS ================= */
@@ -2910,6 +2943,19 @@ void loop() {
     if (notification_ui_dirty) {
         refresh_notification_list();
         notification_ui_dirty = false;
+    }
+
+    if (msg_popup != NULL) {
+        if (millis() - popup_start_time > 10000) {
+            Serial.println("Auto-closing popup");
+            lv_obj_del(msg_popup);
+            msg_popup = NULL;
+            selected_notification_index = -1;
+            
+            // Optional: If you want to ensure the screen doesn't dim immediately
+            // if the user was just reading:
+            last_touch_ms = millis(); 
+        }
     }
 
     check_sensor_logic();
