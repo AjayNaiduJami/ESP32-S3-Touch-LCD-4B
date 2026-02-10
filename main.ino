@@ -85,6 +85,7 @@ lv_obj_t *screen_about;
 lv_obj_t *screen_wifi;
 lv_obj_t *screen_ha;
 lv_obj_t *screen_time_date;
+lv_obj_t *loader_label = NULL;
 
 // Time Screen Handles (Numpad Version)
 lv_obj_t *kb_time;
@@ -614,6 +615,8 @@ void hide_loader() {
     if (loader_overlay) {
         lv_obj_del(loader_overlay);
         loader_overlay = NULL;
+        loader_label = NULL;
+        lv_timer_handler();
     }
 }
 
@@ -634,9 +637,7 @@ void save_ha_settings(const char* h, const char* p_str, const char* u, const cha
   snprintf(mqtt_topic_notify, 64, "%s", topic);
   
   if (en) {
-      show_loader();
-      lv_timer_handler(); 
-      delay(50);          
+      show_loader("Connecting MQTT...");       
 
       mqtt.setServer(mqtt_host, mqtt_port);
       wifiClient.setTimeout(2000); 
@@ -646,7 +647,6 @@ void save_ha_settings(const char* h, const char* p_str, const char* u, const cha
       else connected = mqtt.connect("esp32_panel");
 
       hide_loader();
-      lv_timer_handler();
 
       if (connected) {
           Serial.println("MQTT Connected Immediately!");
@@ -1082,6 +1082,7 @@ void btn_save_wifi_cb(lv_event_t * e) {
     prefs.end();
 
     if (en) {
+        show_loader("Connecting to WiFi...");
         lv_label_set_text(lbl_wifi_status, "Status: Connecting...");
         lv_obj_set_style_text_color(lbl_wifi_status, lv_palette_main(LV_PALETTE_ORANGE), 0);
         
@@ -2031,7 +2032,7 @@ void perform_geocoding_search(const char* query) {
         return;
     }
 
-    show_loader();
+    show_loader("Searching City...");
     
     HTTPClient http;
     WiFiClient client; // Use standard client for this API
@@ -2366,11 +2367,10 @@ void fetch_weather_data() {
         Serial.println("Skipping fetch: No WiFi");
         return;
     }
+    show_loader("Resolving Location...");
 
     // Configure SSL Client Once
     wifi_client_secure.setInsecure();
-    
-    // Allow network stack to settle
     delay(50); 
 
     // ==========================================================
@@ -2378,11 +2378,11 @@ void fetch_weather_data() {
     // ==========================================================
     if (!sysLoc.is_manual) {
         Serial.println("--- STEP 1: IP Geolocation ---");
+        update_loader_msg("Finding IP Location...");
         
-        http_client_insecure.setReuse(false); // Ensure clean connection
+        http_client_insecure.setReuse(false);
         if (http_client_insecure.begin(wifi_client_insecure, "http://ip-api.com/json/?fields=status,lat,lon,city")) {
             int httpCode = http_client_insecure.GET();
-            
             if (httpCode == 200) {
                 String payload = http_client_insecure.getString();
                 JsonDocument docLoc;
@@ -2391,15 +2391,13 @@ void fetch_weather_data() {
                 if (docLoc["status"] == "success") {
                     geo_lat = docLoc["lat"];
                     geo_lon = docLoc["lon"];
-                    
                     sysLoc.lat = geo_lat;
                     sysLoc.lon = geo_lon;
                     
-                    // Safety check before copying string
                     const char* c = docLoc["city"];
                     if (c) {
                         strncpy(sysLoc.city, c, 31);
-                        sysLoc.city[31] = '\0'; // Ensure null termination
+                        sysLoc.city[31] = '\0';
                     }
                     city_name = String(sysLoc.city);
 
@@ -2419,22 +2417,19 @@ void fetch_weather_data() {
         if (ui_uiLabelCity) lv_label_set_text(ui_uiLabelCity, sysLoc.city);
     }
 
-    delay(50); // Small pause to prevent WDT trigger
-
     // ==========================================================
     // STEP 2: SYNC TIME (TimeAPI.io - HTTPS)
     // ==========================================================
     if (geo_lat != 0.0) {
         Serial.println("--- STEP 2: Time Sync (HTTPS) ---");
+        update_loader_msg("Syncing Time...");
         
         String timeUrl = "https://www.timeapi.io/api/v1/time/current/coordinate?latitude=" + 
                          String(geo_lat, 4) + "&longitude=" + String(geo_lon, 4);
         
-        // Use the SECURE client/http objects here
         http_client_secure.setReuse(false);
         if (http_client_secure.begin(wifi_client_secure, timeUrl)) {
             int tCode = http_client_secure.GET();
-            
             if (tCode == 200) {
                 String response = http_client_secure.getString();
                 JsonDocument docTime;
@@ -2465,18 +2460,16 @@ void fetch_weather_data() {
         }
     }
 
-    delay(50); // Small pause
-
     // ==========================================================
     // STEP 3: FETCH WEATHER (Open-Meteo - HTTP)
     // ==========================================================
     if (geo_lat != 0.0) {
         Serial.println("--- STEP 3: Weather (HTTP) ---");
+        update_loader_msg("Updating Weather...");
         
         String url = "http://api.open-meteo.com/v1/forecast?latitude=" + String(geo_lat) + 
                      "&longitude=" + String(geo_lon) + "&current_weather=true";
         
-        // Go back to INSECURE client for standard HTTP
         if (http_client_insecure.begin(wifi_client_insecure, url)) {
             int wCode = http_client_insecure.GET();
             if (wCode == 200) {
@@ -2505,10 +2498,10 @@ void fetch_weather_data() {
             http_client_insecure.end();
         }
     }
+    
     Serial.println("--- Fetch Complete ---");
+    hide_loader();
 }
-
-
 void update_weather_ui(weather_type_t type, bool is_night) {
     
     if (ui_uiScreenSleep == NULL || ui_uiIconWeather == NULL) return;
@@ -2578,6 +2571,43 @@ void update_weather_ui(weather_type_t type, bool is_night) {
     }
     if (ui_uiImgBg) lv_image_set_src(ui_uiImgBg, new_bg);
     lv_obj_set_style_bg_image_src(ui_uiIconWeather, new_icon, LV_PART_MAIN | LV_STATE_DEFAULT);
+}
+
+void show_loader(const char* msg) {
+    if (loader_overlay) lv_obj_del(loader_overlay);
+    
+    // 1. Create the overlay (Frosted effect simulation)
+    loader_overlay = lv_obj_create(lv_layer_top());
+    lv_obj_set_size(loader_overlay, screenWidth, screenHeight);
+    lv_obj_set_style_bg_color(loader_overlay, lv_color_white(), 0);
+    lv_obj_set_style_bg_opa(loader_overlay, LV_OPA_90, 0); // 90% Opaque White
+    lv_obj_set_style_border_width(loader_overlay, 0, 0);
+    lv_obj_clear_flag(loader_overlay, LV_OBJ_FLAG_SCROLLABLE);
+
+    // 2. Create the Spinner
+    lv_obj_t *spinner = lv_spinner_create(loader_overlay);
+    lv_spinner_set_anim_params(spinner, 1000, 60);
+    lv_obj_set_size(spinner, 80, 80);
+    lv_obj_center(spinner);
+    lv_obj_set_style_arc_color(spinner, lv_palette_main(LV_PALETTE_ORANGE), LV_PART_INDICATOR); // Accent color
+    lv_obj_set_style_arc_color(spinner, lv_palette_lighten(LV_PALETTE_GREY, 4), LV_PART_MAIN);  // Faint track
+
+    // 3. Create the Text
+    loader_label = lv_label_create(loader_overlay);
+    lv_label_set_text(loader_label, msg);
+    lv_obj_set_style_text_color(loader_label, lv_color_black(), 0);
+    lv_obj_set_style_text_font(loader_label, &lv_font_montserrat_20, 0);
+    lv_obj_align(loader_label, LV_ALIGN_CENTER, 0, 70);
+
+    // 4. Force UI update immediately
+    lv_timer_handler(); 
+}
+
+void update_loader_msg(const char* msg) {
+    if (loader_label) {
+        lv_label_set_text(loader_label, msg);
+        lv_timer_handler(); // Force redraw of the new text
+    }
 }
 
 /* ================= SETUP & LOOP ================= */
@@ -2833,6 +2863,7 @@ void loop() {
         
         if (status == WL_CONNECTED) {
             current_wifi_state = WIFI_CONNECTED;
+            hide_loader();
             
             if(lbl_wifi_status) {
                 lv_label_set_text(lbl_wifi_status, "Status: Connected");
@@ -2856,7 +2887,7 @@ void loop() {
         } 
         else if (status == WL_CONNECT_FAILED) {
             Serial.println("WiFi Auth Failed. Disabling to prevent glitches.");
-            
+            hide_loader();
             WiFi.disconnect(); 
             
             current_wifi_state = WIFI_IDLE;
@@ -2870,6 +2901,7 @@ void loop() {
             show_notification_popup("Connection Failed:\nIncorrect Password.", -1);
         }
         else if (status == WL_NO_SSID_AVAIL) {
+            hide_loader();
             current_wifi_state = WIFI_IDLE;
             WiFi.disconnect();
             if(lbl_wifi_status) {
@@ -2878,6 +2910,7 @@ void loop() {
             }
         }
         else if (millis() - wifi_connect_start > 15000) {
+            hide_loader();
             current_wifi_state = WIFI_IDLE;
             WiFi.disconnect();
             if(lbl_wifi_status) {
