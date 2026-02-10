@@ -32,6 +32,24 @@ The system uses a smart **Hybrid Location Strategy** to ensure weather and time 
 * **Popup Actions:** Read details or delete individual alerts; "Clear All" functionality included.
 * **Visual Indicators:** Home screen badge count for unread alerts.
 
+### 💡 Display & Power Settings
+
+The device now includes a dedicated settings screen to customize the display behavior and power consumption. All settings are saved to flash memory.
+
+* **Brightness Control:** 
+  * A drag-slider allows real-time adjustment of the backlight intensity (0% to 100%).
+  * **0%** is calibrated to the lowest visible dim level (PWM 120).
+  * **100%** is maximum brightness (PWM 0).
+
+* **Configurable Timeouts:**
+  * **Screensaver:** Select how long the device waits before dimming the screen (15s, 30s, 1m... up to 10m or Never).
+  * **Deep Sleep:** Select how long the device waits in Screensaver mode before turning the backlight **completely OFF** (1m... up to 10m or Never).
+  * **Smart Logic:** The system automatically ensures Deep Sleep time is always greater than Screensaver time to prevent configuration conflicts.
+
+* **Wake-Up Behavior:**
+  * **Touch:** Touching the screen while it is in Deep Sleep (Off) will wake it to the **Screensaver** (Dimmed) state first. A second touch wakes it to the **Home Screen**.
+  * **Motion:** Moving the device (via the QMI8658 IMU) triggers the wake-up sequence.
+
 ### ⚙️ System & Connectivity
 
 * **WiFi Manager:** On-screen WiFi scanning, password entry, and "Saved Networks" management (stores up to 5 networks).
@@ -45,6 +63,11 @@ The system uses a smart **Hybrid Location Strategy** to ensure weather and time 
 * *30 Seconds:* Dim screen/Show Screensaver (Clock & Weather).
 * *60 Seconds:* Turn off backlight to save battery.
 * *Wake:* Tap screen or shake device (IMU-based wake using QMI8658).
+
+### 🎨 UI & UX Improvements
+
+* **Auto-Closing Popups:** Alerts and confirmation dialogs now automatically close after 10 seconds to prevent the UI from getting stuck if you walk away.
+* **Input Blocking:** During WiFi connections or API calls, a global loader appears to prevent accidental clicks, ensuring connection stability.
 
 ## 🛠️ Hardware Specifications
 
