@@ -1916,20 +1916,38 @@ void loc_ta_event_cb(lv_event_t * e) {
     }
 }
 
-// 1. NEW: Callback to refresh UI when screen opens
 void location_screen_load_cb(lv_event_t * e) {
-    // Update the Current City Label
-    String currStr = "Current: " + String(sysLoc.city);
-    if(lbl_loc_current) lv_label_set_text(lbl_loc_current, currStr.c_str());
+    bool has_wifi = (WiFi.status() == WL_CONNECTED);
+    String statusStr = "Current: " + String(sysLoc.city);
 
-    // Ensure Switch matches internal state
-    if (!sysLoc.is_manual) {
-        lv_obj_add_state(sw_auto_location, LV_STATE_CHECKED);
-        lv_obj_add_flag(cont_manual_loc, LV_OBJ_FLAG_HIDDEN);
-    } else {
+    if (!has_wifi) {
+        // CASE 1: NO WIFI
+        // Force Switch OFF (Visually)
         lv_obj_clear_state(sw_auto_location, LV_STATE_CHECKED);
-        lv_obj_clear_flag(cont_manual_loc, LV_OBJ_FLAG_HIDDEN);
+        
+        // Hide Search/Save container (Can't search offline)
+        lv_obj_add_flag(cont_manual_loc, LV_OBJ_FLAG_HIDDEN);
+        
+        // Update Label to indicate offline state
+        statusStr += "\n(Offline - Using Saved)";
+    } 
+    else {
+        // CASE 2: WIFI AVAILABLE
+        // Set switch based on actual mode
+        if (!sysLoc.is_manual) {
+            // Auto Mode: Switch ON, Hide Manual Search
+            lv_obj_add_state(sw_auto_location, LV_STATE_CHECKED);
+            lv_obj_add_flag(cont_manual_loc, LV_OBJ_FLAG_HIDDEN);
+            statusStr += "\n(Auto IP)";
+        } else {
+            // Manual Mode: Switch OFF, Show Manual Search
+            lv_obj_clear_state(sw_auto_location, LV_STATE_CHECKED);
+            lv_obj_clear_flag(cont_manual_loc, LV_OBJ_FLAG_HIDDEN);
+            statusStr += "\n(Manual)";
+        }
     }
+
+    if(lbl_loc_current) lv_label_set_text(lbl_loc_current, statusStr.c_str());
 }
 
 // 2. UPDATED: Save Button (Updates Label Immediately)
@@ -1952,25 +1970,37 @@ void btn_save_loc_cb(lv_event_t * e) {
 }
 
 void sw_auto_loc_cb(lv_event_t * e) {
-    lv_obj_t *sw = (lv_obj_t *)lv_event_get_target(e); // Get switch object directly
+    lv_obj_t *sw = (lv_obj_t *)lv_event_get_target(e); 
     bool auto_mode = lv_obj_has_state(sw, LV_STATE_CHECKED);
     
-    // --- NEW: WiFi Enforcement Logic ---
-    if (auto_mode && WiFi.status() != WL_CONNECTED) {
-        lv_obj_clear_state(sw, LV_STATE_CHECKED); // Force switch OFF
-        show_notification_popup("Error: \n\nConnect to WiFi first!", -1);
-        return;
+    // 1. WiFi Enforcement Check
+    if (WiFi.status() != WL_CONNECTED) {
+        // If user tries to turn ON, force it OFF immediately
+        if (auto_mode) {
+            lv_obj_clear_state(sw, LV_STATE_CHECKED);
+            show_notification_popup("Error: \n\nNo WiFi Connection.\nCannot use Auto IP.", -1);
+        }
+        // Ensure manual container is hidden (can't search offline)
+        lv_obj_add_flag(cont_manual_loc, LV_OBJ_FLAG_HIDDEN);
+        return; 
     }
-    // -----------------------------------
     
+    // 2. Normal Operation (WiFi is Connected)
     if (auto_mode) {
+        // Switched to AUTO
         lv_obj_add_flag(cont_manual_loc, LV_OBJ_FLAG_HIDDEN);
         sysLoc.is_manual = false;
         save_location_prefs();
-        trigger_weather_update = true;
+        trigger_weather_update = true; // Fetch new IP location
+        
+        // Immediate label feedback
+        if(lbl_loc_current) lv_label_set_text(lbl_loc_current, "Fetching IP Location...");
     } else {
+        // Switched to MANUAL
         lv_obj_clear_flag(cont_manual_loc, LV_OBJ_FLAG_HIDDEN);
-        // Note: We don't save immediately here, we wait for user to pick a city
+        // Note: We do NOT change sysLoc.is_manual yet. 
+        // We wait for the user to search and click "Save".
+        // This prevents the location from getting "lost" if they toggle off but don't save new data.
     }
 }
 
@@ -2067,7 +2097,7 @@ void save_location_prefs() {
 void create_location_screen(lv_obj_t *parent) {
     lv_obj_set_style_bg_color(parent, lv_color_white(), 0);
     
-    // NEW: Add event to refresh data when screen opens
+    // Refresh data when screen opens
     lv_obj_add_event_cb(parent, location_screen_load_cb, LV_EVENT_SCREEN_LOADED, NULL);
 
     // -- Header --
@@ -2092,42 +2122,41 @@ void create_location_screen(lv_obj_t *parent) {
     lv_obj_set_size(sw_auto_location, 50, 25);
     lv_obj_align(sw_auto_location, LV_ALIGN_TOP_RIGHT, -20, 60);
     lv_obj_add_event_cb(sw_auto_location, sw_auto_loc_cb, LV_EVENT_VALUE_CHANGED, NULL);
-    // Initial state check
-    if (!sysLoc.is_manual) lv_obj_add_state(sw_auto_location, LV_STATE_CHECKED);
 
     lv_obj_t *lbl_auto = lv_label_create(parent);
     lv_label_set_text(lbl_auto, "Auto (IP):");
     lv_obj_set_style_text_color(lbl_auto, lv_palette_main(LV_PALETTE_GREY), 0);
     lv_obj_align(lbl_auto, LV_ALIGN_TOP_RIGHT, -80, 65);
 
-    // -- Manual Container --
+    // -- Current Info Label (GLOBAL) --
+    // Moved OUT of the container so it is always visible
+    lbl_loc_current = lv_label_create(parent);
+    lv_obj_set_width(lbl_loc_current, 440);
+    lv_label_set_long_mode(lbl_loc_current, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_align(lbl_loc_current, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_color(lbl_loc_current, lv_color_black(), 0);
+    lv_obj_set_style_text_font(lbl_loc_current, &lv_font_montserrat_20, 0);
+    lv_obj_align(lbl_loc_current, LV_ALIGN_TOP_MID, 0, 100); 
+
+    // -- Manual Search Container --
     cont_manual_loc = lv_obj_create(parent);
-    lv_obj_set_size(cont_manual_loc, 480, 350);
-    lv_obj_align(cont_manual_loc, LV_ALIGN_TOP_MID, 0, 90);
+    lv_obj_set_size(cont_manual_loc, 480, 300);
+    lv_obj_align(cont_manual_loc, LV_ALIGN_TOP_MID, 0, 130); // Moved down
     lv_obj_set_style_bg_opa(cont_manual_loc, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(cont_manual_loc, 0, 0);
     lv_obj_clear_flag(cont_manual_loc, LV_OBJ_FLAG_SCROLLABLE);
-
-    if (!sysLoc.is_manual) lv_obj_add_flag(cont_manual_loc, LV_OBJ_FLAG_HIDDEN);
-
-    // Current Info - ASSIGN TO GLOBAL
-    lbl_loc_current = lv_label_create(cont_manual_loc);
-    String currStr = "Current: " + String(sysLoc.city);
-    lv_label_set_text(lbl_loc_current, currStr.c_str());
-    lv_obj_set_style_text_color(lbl_loc_current, lv_color_black(), 0);
-    lv_obj_align(lbl_loc_current, LV_ALIGN_TOP_LEFT, 20, 0);
 
     // Search Bar
     ta_city_search = lv_textarea_create(cont_manual_loc);
     lv_textarea_set_one_line(ta_city_search, true);
     lv_textarea_set_placeholder_text(ta_city_search, "Enter City Name...");
     lv_obj_set_width(ta_city_search, 280);
-    lv_obj_align(ta_city_search, LV_ALIGN_TOP_LEFT, 20, 40);
+    lv_obj_align(ta_city_search, LV_ALIGN_TOP_LEFT, 20, 10);
     lv_obj_add_event_cb(ta_city_search, loc_ta_event_cb, LV_EVENT_ALL, NULL);
 
     lv_obj_t *btn_search = lv_btn_create(cont_manual_loc);
     lv_obj_set_size(btn_search, 60, 40);
-    lv_obj_align(btn_search, LV_ALIGN_TOP_LEFT, 310, 40);
+    lv_obj_align(btn_search, LV_ALIGN_TOP_LEFT, 310, 10);
     lv_obj_set_style_bg_color(btn_search, lv_palette_main(LV_PALETTE_BLUE), 0);
     lv_obj_add_event_cb(btn_search, btn_search_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_t *lbl_s = lv_label_create(btn_search);
@@ -2140,12 +2169,12 @@ void create_location_screen(lv_obj_t *parent) {
     lv_obj_set_width(lbl_search_result, 400);
     lv_label_set_long_mode(lbl_search_result, LV_LABEL_LONG_WRAP);
     lv_obj_set_style_text_align(lbl_search_result, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_align(lbl_search_result, LV_ALIGN_TOP_MID, 0, 100);
+    lv_obj_align(lbl_search_result, LV_ALIGN_TOP_MID, 0, 70);
 
     // Save Button
     lv_obj_t *btn_save = lv_btn_create(cont_manual_loc);
     lv_obj_set_size(btn_save, 140, 50);
-    lv_obj_align(btn_save, LV_ALIGN_BOTTOM_MID, 0, -80);
+    lv_obj_align(btn_save, LV_ALIGN_BOTTOM_MID, 0, -30);
     lv_obj_set_style_bg_color(btn_save, lv_palette_main(LV_PALETTE_GREEN), 0);
     lv_obj_add_event_cb(btn_save, btn_save_loc_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_t *l_save = lv_label_create(btn_save);
