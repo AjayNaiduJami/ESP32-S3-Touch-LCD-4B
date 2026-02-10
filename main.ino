@@ -1337,16 +1337,18 @@ void settings_menu_event_cb(lv_event_t *e) {
 /* ================= Display Settings ================= */
 
 void set_brightness(int percent) {
-    // 1. Safety Clamp
     if (percent < 0) percent = 0;
     if (percent > 100) percent = 100;
     
-    // 2. Active Low Mapping with Limit
-    // Map 0% - 100%  --->  180 (Dim) - 0 (Bright)
-    // We stop at 180 because >180 turns the backlight off completely on this panel.
-    int duty = map(percent, 0, 100, 180, 0); 
+    // UPDATED MAPPING:
+    // 0%   -> 120 PWM (Your new "Dim" floor)
+    // 100% -> 0   PWM (Max Brightness)
+    int duty = map(percent, 0, 100, 120, 0); 
     
     ledcWrite(LCD_BL_PIN, duty);
+
+    // DEBUG: Verify the new range in Serial Monitor
+    Serial.printf("[Display] Slider: %d%% -> PWM Duty: %d (Active Low)\n", percent, duty);
 }
 
 void load_display_prefs() {
@@ -1395,13 +1397,17 @@ void btn_save_disp_cb(lv_event_t * e) {
     setting_sleep_ms = timeout_values[idx_sleep];
     setting_brightness = val_bright;
 
-    // 3. Logic Check: If Sleep < Saver (and not Never), disable sleep? 
-    // Or just let the loop handle it (loop handles it fine).
-    
-    // 4. Save to Flash
+    // DEBUG: Confirm values before saving
+    Serial.println("--- Saving Display Settings ---");
+    Serial.printf("Brightness: %d%%\n", setting_brightness);
+    Serial.printf("Screensaver: %u ms (Index %d)\n", setting_saver_ms, idx_saver);
+    Serial.printf("Deep Sleep:  %u ms (Index %d)\n", setting_sleep_ms, idx_sleep);
+    Serial.println("-------------------------------");
+
+    // 3. Save to Flash
     save_display_prefs();
     
-    // 5. Exit
+    // 4. Exit
     lv_scr_load_anim(screen_settings_menu, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 200, 0, false);
 }
 
