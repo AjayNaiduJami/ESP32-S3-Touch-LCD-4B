@@ -107,6 +107,11 @@ bool trigger_weather_update = false;
 
 SystemLocation sysLoc = { 0.0, 0.0, 0, "Initial", false, false };
 
+WiFiClient wifi_client_insecure;
+WiFiClientSecure wifi_client_secure;
+HTTPClient http_client_insecure;
+HTTPClient http_client_secure;
+
 typedef enum {
     WEATHER_CLEAR = 0,
     WEATHER_CLOUDS,
@@ -2340,87 +2345,89 @@ void create_time_date_screen(lv_obj_t *parent) {
     lv_obj_add_event_cb(kb_time, time_kb_event_cb, LV_EVENT_ALL, NULL);
 }
 
-/* ================= WEATHER ================= */
 void fetch_weather_data() {
     if (WiFi.status() != WL_CONNECTED) {
-        Serial.println("Weather Skipped: No WiFi");
+        Serial.println("Skipping fetch: No WiFi");
         return;
     }
 
-    // 2. Define Clients at top level scope
-    HTTPClient http;
-    WiFiClient client;              // For HTTP (IP-API, Open-Meteo)
-    WiFiClientSecure secureClient;  // For HTTPS (TimeAPI)
-    secureClient.setInsecure();     // Skip cert check for speed
+    // Configure SSL Client Once
+    wifi_client_secure.setInsecure();
+    
+    // Allow network stack to settle
+    delay(50); 
 
     // ==========================================================
     // STEP 1: RESOLVE COORDINATES (IP vs MANUAL)
     // ==========================================================
     if (!sysLoc.is_manual) {
-        Serial.println("Fetching IP Location...");
-        http.setTimeout(3000);
-        // Use 'client' for HTTP
-        if (http.begin(client, "http://ip-api.com/json/?fields=status,lat,lon,city")) {
-            int httpCode = http.GET();
+        Serial.println("--- STEP 1: IP Geolocation ---");
+        
+        http_client_insecure.setReuse(false); // Ensure clean connection
+        if (http_client_insecure.begin(wifi_client_insecure, "http://ip-api.com/json/?fields=status,lat,lon,city")) {
+            int httpCode = http_client_insecure.GET();
+            
             if (httpCode == 200) {
-                String payload = http.getString();
+                String payload = http_client_insecure.getString();
                 JsonDocument docLoc;
                 deserializeJson(docLoc, payload);
 
                 if (docLoc["status"] == "success") {
-                    // Update Global Float Variables
                     geo_lat = docLoc["lat"];
                     geo_lon = docLoc["lon"];
                     
-                    // Update Struct (but don't save to flash yet to save cycles)
                     sysLoc.lat = geo_lat;
                     sysLoc.lon = geo_lon;
                     
+                    // Safety check before copying string
                     const char* c = docLoc["city"];
-                    strncpy(sysLoc.city, c, 31);
-                    city_name = String(c);
+                    if (c) {
+                        strncpy(sysLoc.city, c, 31);
+                        sysLoc.city[31] = '\0'; // Ensure null termination
+                    }
+                    city_name = String(sysLoc.city);
 
                     if (ui_uiLabelCity) lv_label_set_text(ui_uiLabelCity, sysLoc.city);
                     Serial.printf("IP Loc: %s (%.4f, %.4f)\n", sysLoc.city, geo_lat, geo_lon);
                 }
             } else {
-                Serial.printf("IP-API Fail: %d\n", httpCode);
+                Serial.printf("IP-API Error: %d\n", httpCode);
             }
-            http.end();
+            http_client_insecure.end();
         }
     } else {
-        // MANUAL MODE: Load from Struct
+        Serial.println("--- STEP 1: Using Manual Location ---");
         geo_lat = sysLoc.lat;
         geo_lon = sysLoc.lon;
         city_name = String(sysLoc.city);
         if (ui_uiLabelCity) lv_label_set_text(ui_uiLabelCity, sysLoc.city);
-        Serial.println("Using Manual Location.");
     }
+
+    delay(50); // Small pause to prevent WDT trigger
 
     // ==========================================================
     // STEP 2: SYNC TIME (TimeAPI.io - HTTPS)
     // ==========================================================
     if (geo_lat != 0.0) {
+        Serial.println("--- STEP 2: Time Sync (HTTPS) ---");
+        
         String timeUrl = "https://www.timeapi.io/api/v1/time/current/coordinate?latitude=" + 
                          String(geo_lat, 4) + "&longitude=" + String(geo_lon, 4);
         
-        Serial.println("Fetching Time...");
-        
-        // Use 'secureClient' for HTTPS
-        if (http.begin(secureClient, timeUrl)) {
-            int tCode = http.GET();
-            String response = http.getString();
-
+        // Use the SECURE client/http objects here
+        http_client_secure.setReuse(false);
+        if (http_client_secure.begin(wifi_client_secure, timeUrl)) {
+            int tCode = http_client_secure.GET();
+            
             if (tCode == 200) {
+                String response = http_client_secure.getString();
                 JsonDocument docTime;
                 DeserializationError error = deserializeJson(docTime, response);
 
                 if (!error) {
-                    // 1. Update Offset
                     sysLoc.utc_offset = docTime["utc_offset_seconds"]; 
                     configTime(sysLoc.utc_offset, 0, "pool.ntp.org", "time.nist.gov");
                     
-                    // 2. Update Hardware RTC
                     String dt = docTime["date_time"].as<String>();
                     if (dt.length() >= 16) {
                         rtc.setDateTime(
@@ -2433,32 +2440,32 @@ void fetch_weather_data() {
                         );
                     }
                     Serial.printf("Time Synced! Offset: %d\n", sysLoc.utc_offset);
-                    
-                    // Refresh UI if we are looking at it
                     if (lv_scr_act() == screen_time_date) time_screen_load_cb(NULL);
                 }
             } else {
-                Serial.printf("TimeAPI Fail: %d\n", tCode);
+                Serial.printf("TimeAPI Error: %d\n", tCode);
             }
-            http.end();
+            http_client_secure.end();
         }
     }
+
+    delay(50); // Small pause
 
     // ==========================================================
     // STEP 3: FETCH WEATHER (Open-Meteo - HTTP)
     // ==========================================================
     if (geo_lat != 0.0) {
+        Serial.println("--- STEP 3: Weather (HTTP) ---");
+        
         String url = "http://api.open-meteo.com/v1/forecast?latitude=" + String(geo_lat) + 
                      "&longitude=" + String(geo_lon) + "&current_weather=true";
         
-        Serial.println("Fetching Weather...");
-        // Use 'client' for HTTP
-        if (http.begin(client, url)) {
-            int wCode = http.GET();
+        // Go back to INSECURE client for standard HTTP
+        if (http_client_insecure.begin(wifi_client_insecure, url)) {
+            int wCode = http_client_insecure.GET();
             if (wCode == 200) {
-                String payload = http.getString();
+                String payload = http_client_insecure.getString();
                 JsonDocument docWeather;
-                // Filter to save memory
                 JsonDocument filter;
                 filter["current_weather"]["temperature"] = true;
                 filter["current_weather"]["weathercode"] = true;
@@ -2471,19 +2478,20 @@ void fetch_weather_data() {
                 is_day = docWeather["current_weather"]["is_day"];
                 initial_weather_fetched = true;
 
-                // Update UI Labels
                 if(ui_uiLabelTemp) lv_label_set_text(ui_uiLabelTemp, (String(current_temp, 0) + "°").c_str());
                 if(ui_uiLabelWeather) lv_label_set_text(ui_uiLabelWeather, get_weather_description(weather_code).c_str());
                 
                 update_weather_ui(get_weather_type(weather_code), (is_day == 0));
                 Serial.printf("Weather: %.1fC\n", current_temp);
             } else {
-                Serial.printf("Weather Fail: %d\n", wCode);
+                Serial.printf("Weather Error: %d\n", wCode);
             }
-            http.end();
+            http_client_insecure.end();
         }
     }
+    Serial.println("--- Fetch Complete ---");
 }
+
 
 void update_weather_ui(weather_type_t type, bool is_night) {
     
