@@ -1944,44 +1944,27 @@ void loc_ta_event_cb(lv_event_t * e) {
 }
 
 void location_screen_load_cb(lv_event_t * e) {
-    // STRICT CHECK: Both the switch must be ON and the hardware connected
     bool is_online = (wifi_enabled && WiFi.status() == WL_CONNECTED);
     
     String statusStr = "Current: " + String(sysLoc.city);
 
     if (!is_online) {
-        // --- OFFLINE STATE ---
-        // 1. Force the Auto switch visually OFF
         lv_obj_clear_state(sw_auto_location, LV_STATE_CHECKED);
-        
-        // 2. CRITICAL: Hide the manual search container (Can't search offline)
         lv_obj_add_flag(cont_manual_loc, LV_OBJ_FLAG_HIDDEN);
         
-        // 3. Update text
-        if (!wifi_enabled) {
-            statusStr += "\n(WiFi Disabled)";
-        } else {
-            statusStr += "\n(No Connection)";
-        }
-        
-        // Optional: Grey out the label to indicate inactive state
+        if (!wifi_enabled) statusStr += " (WiFi Disabled)";
+        else statusStr += " (No Connection)";
         lv_obj_set_style_text_color(lbl_loc_current, lv_palette_main(LV_PALETTE_GREY), 0);
     } 
     else {
-        // --- ONLINE STATE ---
-        // Reset label color
-        lv_obj_set_style_text_color(lbl_loc_current, lv_color_black(), 0);
-
         if (!sysLoc.is_manual) {
-            // Auto Mode: Switch ON, Hide Manual Search
             lv_obj_add_state(sw_auto_location, LV_STATE_CHECKED);
             lv_obj_add_flag(cont_manual_loc, LV_OBJ_FLAG_HIDDEN);
-            statusStr += "\n(Auto IP)";
+            statusStr += " (Auto IP)"; // Changed to inline
         } else {
-            // Manual Mode: Switch OFF, SHOW Manual Search
             lv_obj_clear_state(sw_auto_location, LV_STATE_CHECKED);
             lv_obj_clear_flag(cont_manual_loc, LV_OBJ_FLAG_HIDDEN);
-            statusStr += "\n(Manual)";
+            statusStr += " (Manual)"; // Changed to inline
         }
     }
 
@@ -2134,8 +2117,6 @@ void save_location_prefs() {
 
 void create_location_screen(lv_obj_t *parent) {
     lv_obj_set_style_bg_color(parent, lv_color_white(), 0);
-    
-    // Refresh data when screen opens
     lv_obj_add_event_cb(parent, location_screen_load_cb, LV_EVENT_SCREEN_LOADED, NULL);
 
     // -- Header --
@@ -2166,35 +2147,52 @@ void create_location_screen(lv_obj_t *parent) {
     lv_obj_set_style_text_color(lbl_auto, lv_palette_main(LV_PALETTE_GREY), 0);
     lv_obj_align(lbl_auto, LV_ALIGN_TOP_RIGHT, -80, 65);
 
-    // -- Current Info Label (GLOBAL) --
-    // Moved OUT of the container so it is always visible
+    // -- Current Info Label --
+    // OPTIMIZED: Left aligned, Grey color
     lbl_loc_current = lv_label_create(parent);
     lv_obj_set_width(lbl_loc_current, 440);
     lv_label_set_long_mode(lbl_loc_current, LV_LABEL_LONG_WRAP);
-    lv_obj_set_style_text_align(lbl_loc_current, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_style_text_color(lbl_loc_current, lv_color_black(), 0);
+    lv_obj_set_style_text_align(lbl_loc_current, LV_TEXT_ALIGN_LEFT, 0); 
+    lv_obj_set_style_text_color(lbl_loc_current, lv_palette_main(LV_PALETTE_GREY), 0); 
     lv_obj_set_style_text_font(lbl_loc_current, &lv_font_montserrat_20, 0);
-    lv_obj_align(lbl_loc_current, LV_ALIGN_TOP_MID, 0, 100); 
+    lv_obj_align(lbl_loc_current, LV_ALIGN_TOP_LEFT, 20, 100); 
 
     // -- Manual Search Container --
     cont_manual_loc = lv_obj_create(parent);
-    lv_obj_set_size(cont_manual_loc, 480, 300);
-    lv_obj_align(cont_manual_loc, LV_ALIGN_TOP_MID, 0, 130); // Moved down
+    lv_obj_set_size(cont_manual_loc, 480, 320); // Increased height slightly for bottom button
+    lv_obj_align(cont_manual_loc, LV_ALIGN_TOP_MID, 0, 130);
     lv_obj_set_style_bg_opa(cont_manual_loc, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(cont_manual_loc, 0, 0);
     lv_obj_clear_flag(cont_manual_loc, LV_OBJ_FLAG_SCROLLABLE);
 
+    // OPTIMIZED: Input Style (White Background)
+    static lv_style_t style_input;
+    if(style_input.prop_cnt == 0) {
+        lv_style_init(&style_input);
+        lv_style_set_bg_color(&style_input, lv_color_white());
+        lv_style_set_border_width(&style_input, 1);
+        lv_style_set_border_color(&style_input, lv_palette_main(LV_PALETTE_GREY));
+        lv_style_set_text_color(&style_input, lv_color_black());
+        lv_style_set_radius(&style_input, 8);
+    }
+
+    // OPTIMIZED: Centered Inputs
+    // Widths: Input(260) + Gap(10) + Button(60) = 330 total width
+    // Start X = (480 - 330) / 2 = 75
+    
     // Search Bar
     ta_city_search = lv_textarea_create(cont_manual_loc);
     lv_textarea_set_one_line(ta_city_search, true);
     lv_textarea_set_placeholder_text(ta_city_search, "Enter City Name...");
-    lv_obj_set_width(ta_city_search, 280);
-    lv_obj_align(ta_city_search, LV_ALIGN_TOP_LEFT, 20, 10);
+    lv_obj_set_width(ta_city_search, 260);
+    lv_obj_align(ta_city_search, LV_ALIGN_TOP_LEFT, 75, 10); // Centered X
+    lv_obj_add_style(ta_city_search, &style_input, 0);       // Added White Style
     lv_obj_add_event_cb(ta_city_search, loc_ta_event_cb, LV_EVENT_ALL, NULL);
 
+    // Search Button
     lv_obj_t *btn_search = lv_btn_create(cont_manual_loc);
     lv_obj_set_size(btn_search, 60, 40);
-    lv_obj_align(btn_search, LV_ALIGN_TOP_LEFT, 310, 10);
+    lv_obj_align(btn_search, LV_ALIGN_TOP_LEFT, 345, 10);    // 75 + 260 + 10
     lv_obj_set_style_bg_color(btn_search, lv_palette_main(LV_PALETTE_BLUE), 0);
     lv_obj_add_event_cb(btn_search, btn_search_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_t *lbl_s = lv_label_create(btn_search);
@@ -2212,7 +2210,7 @@ void create_location_screen(lv_obj_t *parent) {
     // Save Button
     lv_obj_t *btn_save = lv_btn_create(cont_manual_loc);
     lv_obj_set_size(btn_save, 140, 50);
-    lv_obj_align(btn_save, LV_ALIGN_BOTTOM_MID, 0, -30);
+    lv_obj_align(btn_save, LV_ALIGN_BOTTOM_MID, 0, -10);
     lv_obj_set_style_bg_color(btn_save, lv_palette_main(LV_PALETTE_GREEN), 0);
     lv_obj_add_event_cb(btn_save, btn_save_loc_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_t *l_save = lv_label_create(btn_save);
@@ -2265,8 +2263,8 @@ void create_time_date_screen(lv_obj_t *parent) {
     lv_obj_align(lbl_auto, LV_ALIGN_TOP_RIGHT, -80, 65);
 
     cont_manual_time = lv_obj_create(parent);
-    lv_obj_set_size(cont_manual_time, 480, 360);
-    lv_obj_align(cont_manual_time, LV_ALIGN_TOP_MID, 0, 70);
+    lv_obj_set_size(cont_manual_time, 480, 380);
+    lv_obj_align(cont_manual_time, LV_ALIGN_TOP_MID, 0, 100);
     lv_obj_set_style_bg_opa(cont_manual_time, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(cont_manual_time, 0, 0);
     lv_obj_clear_flag(cont_manual_time, LV_OBJ_FLAG_SCROLLABLE);
@@ -2346,7 +2344,7 @@ void create_time_date_screen(lv_obj_t *parent) {
 
     lv_obj_t *btn_save = lv_btn_create(cont_manual_time);
     lv_obj_set_size(btn_save, 140, 50); 
-    lv_obj_align(btn_save, LV_ALIGN_BOTTOM_MID, 0, -60); 
+    lv_obj_align(btn_save, LV_ALIGN_BOTTOM_MID, 0, -10);
     lv_obj_set_style_bg_color(btn_save, lv_palette_main(LV_PALETTE_GREEN), 0);
     lv_obj_add_event_cb(btn_save, save_time_date_cb, LV_EVENT_CLICKED, NULL);
     
