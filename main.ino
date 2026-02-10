@@ -31,7 +31,6 @@
 #define WIFI_RECONNECT_INTERVAL 60000
 
 /* ================= BACKLIGHT CONFIG ================= */
-// Logic seems to be Active Low (0 = Bright, 255 = Off) based on your comments
 #define BL_DUTY_BRIGHT 0
 #define BL_DUTY_DIM 100
 #define BL_DUTY_OFF 255
@@ -59,10 +58,10 @@ struct HaSwitch { const char* name; const char* topic_cmd; const char* topic_sta
 struct SystemLocation {
     float lat;
     float lon;
-    int utc_offset;        // In seconds (e.g., 19800)
+    int utc_offset;
     char city[32];
-    bool is_manual;        // true = User locked a location, false = Use IP-API
-    bool has_saved_data;   // true = We have data in flash to fall back on
+    bool is_manual;
+    bool has_saved_data;
 };
 
 /* ================= GLOBALS ================= */
@@ -1906,7 +1905,7 @@ void sw_ntp_event_cb(lv_event_t * e) {
     bool is_on = lv_obj_has_state(sw, LV_STATE_CHECKED);
 
     if (is_on && WiFi.status() != WL_CONNECTED) {
-        lv_obj_clear_state(sw, LV_STATE_CHECKED); // Force switch OFF
+        lv_obj_clear_state(sw, LV_STATE_CHECKED);
         show_notification_popup("Error: \n\nConnect to WiFi first!", -1);
         return;
     }
@@ -1931,7 +1930,7 @@ void sw_ntp_event_cb(lv_event_t * e) {
 void btn_search_cb(lv_event_t * e) {
     const char* txt = lv_textarea_get_text(ta_city_search);
     if (strlen(txt) < 2) return;
-    lv_obj_add_flag(kb_loc, LV_OBJ_FLAG_HIDDEN); // Hide keyboard
+    lv_obj_add_flag(kb_loc, LV_OBJ_FLAG_HIDDEN);
     perform_geocoding_search(txt);
 }
 
@@ -1961,11 +1960,11 @@ void location_screen_load_cb(lv_event_t * e) {
         if (!sysLoc.is_manual) {
             lv_obj_add_state(sw_auto_location, LV_STATE_CHECKED);
             lv_obj_add_flag(cont_manual_loc, LV_OBJ_FLAG_HIDDEN);
-            statusStr += " (Auto IP)"; // Changed to inline
+            statusStr += " (Auto IP)";
         } else {
             lv_obj_clear_state(sw_auto_location, LV_STATE_CHECKED);
             lv_obj_clear_flag(cont_manual_loc, LV_OBJ_FLAG_HIDDEN);
-            statusStr += " (Manual)"; // Changed to inline
+            statusStr += " (Manual)";
         }
     }
 
@@ -1979,8 +1978,6 @@ void btn_save_loc_cb(lv_event_t * e) {
         sysLoc.lat = search_result_lat;
         sysLoc.lon = search_result_lon;
         strncpy(sysLoc.city, search_result_name, 31);
-        
-        // Update the label immediately so it's correct even before we leave
         String currStr = "Current: " + String(sysLoc.city);
         if(lbl_loc_current) lv_label_set_text(lbl_loc_current, currStr.c_str());
     }
@@ -1995,34 +1992,23 @@ void sw_auto_loc_cb(lv_event_t * e) {
     lv_obj_t *sw = (lv_obj_t *)lv_event_get_target(e); 
     bool auto_mode = lv_obj_has_state(sw, LV_STATE_CHECKED);
     
-    // 1. WiFi Enforcement Check
     if (WiFi.status() != WL_CONNECTED) {
-        // If user tries to turn ON, force it OFF immediately
         if (auto_mode) {
             lv_obj_clear_state(sw, LV_STATE_CHECKED);
             show_notification_popup("Error: \n\nNo WiFi Connection.\nCannot use Auto IP.", -1);
         }
-        // Ensure manual container is hidden (can't search offline)
         lv_obj_add_flag(cont_manual_loc, LV_OBJ_FLAG_HIDDEN);
         return; 
     }
     
-    // 2. Normal Operation (WiFi is Connected)
     if (auto_mode) {
-        // Switched to AUTO
         lv_obj_add_flag(cont_manual_loc, LV_OBJ_FLAG_HIDDEN);
         sysLoc.is_manual = false;
         save_location_prefs();
-        trigger_weather_update = true; // Fetch new IP location
-        
-        // Immediate label feedback
+        trigger_weather_update = true;
         if(lbl_loc_current) lv_label_set_text(lbl_loc_current, "Fetching IP Location...");
     } else {
-        // Switched to MANUAL
         lv_obj_clear_flag(cont_manual_loc, LV_OBJ_FLAG_HIDDEN);
-        // Note: We do NOT change sysLoc.is_manual yet. 
-        // We wait for the user to search and click "Save".
-        // This prevents the location from getting "lost" if they toggle off but don't save new data.
     }
 }
 
@@ -2035,9 +2021,8 @@ void perform_geocoding_search(const char* query) {
     show_loader("Searching City...");
     
     HTTPClient http;
-    WiFiClient client; // Use standard client for this API
+    WiFiClient client;
     
-    // URL Encode the query (simplistic version for spaces)
     String q = String(query);
     q.replace(" ", "+");
     
@@ -2058,7 +2043,7 @@ void perform_geocoding_search(const char* query) {
                 search_result_lat = results[0]["latitude"];
                 search_result_lon = results[0]["longitude"];
                 const char* n = results[0]["name"];
-                const char* c = results[0]["country_code"]; // e.g., "US", "IN"
+                const char* c = results[0]["country_code"];
                 
                 strncpy(search_result_name, n, 31);
                 
@@ -2081,29 +2066,27 @@ void perform_geocoding_search(const char* query) {
 }
 
 void load_location_prefs() {
-    prefs.begin("loc_config", true); // Open in Read-Only mode
+    prefs.begin("loc_config", true);
 
     sysLoc.is_manual = prefs.getBool("is_manual", false);
-    sysLoc.lat = prefs.getFloat("lat", 17.3850); // Default to Hyderabad
+    sysLoc.lat = prefs.getFloat("lat", 17.3850); // Default to Hyderabad, India
     sysLoc.lon = prefs.getFloat("lon", 78.4867);
     sysLoc.utc_offset = prefs.getInt("utc_offset", 19800);
     
     String c = prefs.getString("city", "Hyderabad");
     strncpy(sysLoc.city, c.c_str(), 31);
     
-    // Check if we've ever successfully saved data before
     sysLoc.has_saved_data = prefs.getBool("has_data", false);
 
     prefs.end();
 
-    // Immediately apply the last known offset to the system clock
     configTime(sysLoc.utc_offset, 0, "pool.ntp.org");
     
     Serial.printf("Loaded Loc: %s (Manual: %s)\n", sysLoc.city, sysLoc.is_manual ? "YES" : "NO");
 }
 
 void save_location_prefs() {
-    prefs.begin("loc_config", false); // Open in Write mode
+    prefs.begin("loc_config", false);
 
     prefs.putBool("is_manual", sysLoc.is_manual);
     prefs.putFloat("lat", sysLoc.lat);
@@ -2160,13 +2143,12 @@ void create_location_screen(lv_obj_t *parent) {
 
     // -- Manual Search Container --
     cont_manual_loc = lv_obj_create(parent);
-    lv_obj_set_size(cont_manual_loc, 480, 320); // Increased height slightly for bottom button
+    lv_obj_set_size(cont_manual_loc, 480, 320);
     lv_obj_align(cont_manual_loc, LV_ALIGN_TOP_MID, 0, 130);
     lv_obj_set_style_bg_opa(cont_manual_loc, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(cont_manual_loc, 0, 0);
     lv_obj_clear_flag(cont_manual_loc, LV_OBJ_FLAG_SCROLLABLE);
 
-    // OPTIMIZED: Input Style (White Background)
     static lv_style_t style_input;
     if(style_input.prop_cnt == 0) {
         lv_style_init(&style_input);
@@ -2176,24 +2158,20 @@ void create_location_screen(lv_obj_t *parent) {
         lv_style_set_text_color(&style_input, lv_color_black());
         lv_style_set_radius(&style_input, 8);
     }
-
-    // OPTIMIZED: Centered Inputs
-    // Widths: Input(260) + Gap(10) + Button(60) = 330 total width
-    // Start X = (480 - 330) / 2 = 75
     
     // Search Bar
     ta_city_search = lv_textarea_create(cont_manual_loc);
     lv_textarea_set_one_line(ta_city_search, true);
     lv_textarea_set_placeholder_text(ta_city_search, "Enter City Name...");
     lv_obj_set_width(ta_city_search, 260);
-    lv_obj_align(ta_city_search, LV_ALIGN_TOP_LEFT, 75, 10); // Centered X
-    lv_obj_add_style(ta_city_search, &style_input, 0);       // Added White Style
+    lv_obj_align(ta_city_search, LV_ALIGN_TOP_LEFT, 75, 10);
+    lv_obj_add_style(ta_city_search, &style_input, 0);
     lv_obj_add_event_cb(ta_city_search, loc_ta_event_cb, LV_EVENT_ALL, NULL);
 
     // Search Button
     lv_obj_t *btn_search = lv_btn_create(cont_manual_loc);
     lv_obj_set_size(btn_search, 60, 40);
-    lv_obj_align(btn_search, LV_ALIGN_TOP_LEFT, 345, 10);    // 75 + 260 + 10
+    lv_obj_align(btn_search, LV_ALIGN_TOP_LEFT, 345, 10);
     lv_obj_set_style_bg_color(btn_search, lv_palette_main(LV_PALETTE_BLUE), 0);
     lv_obj_add_event_cb(btn_search, btn_search_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_t *lbl_s = lv_label_create(btn_search);
@@ -2369,15 +2347,11 @@ void fetch_weather_data() {
     }
     show_loader("Resolving Location...");
 
-    // Configure SSL Client Once
     wifi_client_secure.setInsecure();
     delay(50); 
 
-    // ==========================================================
-    // STEP 1: RESOLVE COORDINATES (IP vs MANUAL)
-    // ==========================================================
     if (!sysLoc.is_manual) {
-        Serial.println("--- STEP 1: IP Geolocation ---");
+        Serial.println("Finding IP Geolocation...");
         update_loader_msg("Finding IP Location...");
         
         http_client_insecure.setReuse(false);
@@ -2410,18 +2384,15 @@ void fetch_weather_data() {
             http_client_insecure.end();
         }
     } else {
-        Serial.println("--- STEP 1: Using Manual Location ---");
+        Serial.println("Using Manual Location...");
         geo_lat = sysLoc.lat;
         geo_lon = sysLoc.lon;
         city_name = String(sysLoc.city);
         if (ui_uiLabelCity) lv_label_set_text(ui_uiLabelCity, sysLoc.city);
     }
 
-    // ==========================================================
-    // STEP 2: SYNC TIME (TimeAPI.io - HTTPS)
-    // ==========================================================
     if (geo_lat != 0.0) {
-        Serial.println("--- STEP 2: Time Sync (HTTPS) ---");
+        Serial.println("Finding Time...");
         update_loader_msg("Syncing Time...");
         
         String timeUrl = "https://www.timeapi.io/api/v1/time/current/coordinate?latitude=" + 
@@ -2460,11 +2431,8 @@ void fetch_weather_data() {
         }
     }
 
-    // ==========================================================
-    // STEP 3: FETCH WEATHER (Open-Meteo - HTTP)
-    // ==========================================================
     if (geo_lat != 0.0) {
-        Serial.println("--- STEP 3: Weather (HTTP) ---");
+        Serial.println("Finding Weather...");
         update_loader_msg("Updating Weather...");
         
         String url = "http://api.open-meteo.com/v1/forecast?latitude=" + String(geo_lat) + 
@@ -2576,37 +2544,33 @@ void update_weather_ui(weather_type_t type, bool is_night) {
 void show_loader(const char* msg) {
     if (loader_overlay) lv_obj_del(loader_overlay);
     
-    // 1. Create the overlay (Frosted effect simulation)
     loader_overlay = lv_obj_create(lv_layer_top());
     lv_obj_set_size(loader_overlay, screenWidth, screenHeight);
     lv_obj_set_style_bg_color(loader_overlay, lv_color_white(), 0);
-    lv_obj_set_style_bg_opa(loader_overlay, LV_OPA_90, 0); // 90% Opaque White
+    lv_obj_set_style_bg_opa(loader_overlay, LV_OPA_90, 0);
     lv_obj_set_style_border_width(loader_overlay, 0, 0);
     lv_obj_clear_flag(loader_overlay, LV_OBJ_FLAG_SCROLLABLE);
 
-    // 2. Create the Spinner
     lv_obj_t *spinner = lv_spinner_create(loader_overlay);
     lv_spinner_set_anim_params(spinner, 1000, 60);
     lv_obj_set_size(spinner, 80, 80);
     lv_obj_center(spinner);
-    lv_obj_set_style_arc_color(spinner, lv_palette_main(LV_PALETTE_ORANGE), LV_PART_INDICATOR); // Accent color
-    lv_obj_set_style_arc_color(spinner, lv_palette_lighten(LV_PALETTE_GREY, 4), LV_PART_MAIN);  // Faint track
+    lv_obj_set_style_arc_color(spinner, lv_palette_main(LV_PALETTE_ORANGE), LV_PART_INDICATOR);
+    lv_obj_set_style_arc_color(spinner, lv_palette_lighten(LV_PALETTE_GREY, 4), LV_PART_MAIN);
 
-    // 3. Create the Text
     loader_label = lv_label_create(loader_overlay);
     lv_label_set_text(loader_label, msg);
     lv_obj_set_style_text_color(loader_label, lv_color_black(), 0);
     lv_obj_set_style_text_font(loader_label, &lv_font_montserrat_20, 0);
     lv_obj_align(loader_label, LV_ALIGN_CENTER, 0, 70);
 
-    // 4. Force UI update immediately
     lv_timer_handler(); 
 }
 
 void update_loader_msg(const char* msg) {
     if (loader_label) {
         lv_label_set_text(loader_label, msg);
-        lv_timer_handler(); // Force redraw of the new text
+        lv_timer_handler();
     }
 }
 
