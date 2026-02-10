@@ -347,14 +347,25 @@ void touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data) {
     lx = x; ly = y;
 
     if (!was_pressed) {
-        if (is_backlight_off) {
+        bool is_sleeping = is_backlight_off;        
+        if (is_sleeping) {
+            if (setting_sleep_ms > setting_saver_ms && setting_saver_ms > 0) {
+                last_touch_ms = millis() - setting_saver_ms - 1000;
+                screensaver_force_bright = true;
+            } else {
+                last_touch_ms = millis();
+                screensaver_force_bright = false;
+            }
             touch_for_wake_only = true;
-            last_touch_ms = millis() - SCREENSAVER_TIMEOUT_MS; 
-            screensaver_force_bright = true;
-        } else {
-            touch_for_wake_only = false;
-            last_touch_ms = millis();
+        } 
+        else if (setting_saver_ms > 0 && (millis() - last_touch_ms) > setting_saver_ms) {
+            last_touch_ms = millis(); 
             screensaver_force_bright = false;
+            touch_for_wake_only = true;
+        } 
+        else {
+            last_touch_ms = millis();
+            touch_for_wake_only = false;
         }
         was_pressed = true;
     }
@@ -362,7 +373,7 @@ void touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data) {
     if (touch_for_wake_only) {
         data->state = LV_INDEV_STATE_RELEASED; 
     } else {
-        last_touch_ms = millis();
+        if (!is_backlight_off) last_touch_ms = millis();
         data->state = LV_INDEV_STATE_PRESSED; 
     }
   } else {
@@ -451,9 +462,17 @@ void check_sensor_logic() {
     last_acc_x = acc.x; last_acc_y = acc.y; last_acc_z = acc.z;
     if (delta > MOTION_THRESHOLD) {
         if (is_backlight_off) {
-             last_touch_ms = millis() - SCREENSAVER_TIMEOUT_MS - 1000;
-        } else {
+             if (setting_sleep_ms > setting_saver_ms && setting_saver_ms > 0) {
+                 last_touch_ms = millis() - setting_saver_ms - 1000;
+                 screensaver_force_bright = true; 
+             } else {
+                 last_touch_ms = millis();
+                 screensaver_force_bright = false;
+             }
+        } 
+        else {
              last_touch_ms = millis();
+             screensaver_force_bright = false;
         }
     }
   }
@@ -1339,16 +1358,8 @@ void settings_menu_event_cb(lv_event_t *e) {
 void set_brightness(int percent) {
     if (percent < 0) percent = 0;
     if (percent > 100) percent = 100;
-    
-    // UPDATED MAPPING:
-    // 0%   -> 120 PWM (Your new "Dim" floor)
-    // 100% -> 0   PWM (Max Brightness)
     int duty = map(percent, 0, 100, 120, 0); 
-    
     ledcWrite(LCD_BL_PIN, duty);
-
-    // DEBUG: Verify the new range in Serial Monitor
-    Serial.printf("[Display] Slider: %d%% -> PWM Duty: %d (Active Low)\n", percent, duty);
 }
 
 void load_display_prefs() {
@@ -1358,7 +1369,6 @@ void load_display_prefs() {
     setting_sleep_ms = prefs.getUInt("sleep", 60000);
     prefs.end();
     
-    // Apply brightness immediately on boot
     set_brightness(setting_brightness);
     Serial.printf("Disp: B=%d%%, Saver=%u, Sleep=%u\n", setting_brightness, setting_saver_ms, setting_sleep_ms);
 }
@@ -2923,7 +2933,6 @@ void loop() {
             lv_scr_load(ui_uiScreenSleep); 
         }
     }
-    
     // STATE 2: SCREENSAVER (Dimmed)
     else if (setting_saver_ms > 0 && diff > setting_saver_ms) {
         is_backlight_off = false; 
@@ -2933,32 +2942,25 @@ void loop() {
         }
         
         if (screensaver_force_bright) {
-            set_brightness(setting_brightness); // Woke by tap? Bright.
+            set_brightness(setting_brightness); 
         } else {
-            // Dim Logic: 
-            // If user brightness is > 20%, drop to 20%. 
-            // If user set it lower than 20% (e.g. 5%), keep it at 5%.
-            int dim_level = (setting_brightness > 20) ? 20 : setting_brightness;
-            set_brightness(dim_level); 
+            set_brightness(0); 
         }
     }
-    
     // STATE 3: ACTIVE (User Brightness)
     else {
         if (is_backlight_off || lv_scr_act() == ui_uiScreenSleep) {
             Serial.println(">>> WAKE <<<");
             lv_scr_load(screen_home); 
-            // Clear any pending clicks that woke the screen
             lv_indev_wait_release(lv_indev_get_act());
             if(msg_popup) { lv_obj_del(msg_popup); msg_popup = NULL; }
         }
-        
-        // Apply User's chosen brightness (0-100 mapped to 180-0)
         set_brightness(setting_brightness); 
         
         is_backlight_off = false;
         screensaver_force_bright = false;
     }
+
     switch (current_wifi_state) {
         case WIFI_SCANNING: {
             lv_timer_handler(); 
