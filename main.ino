@@ -546,8 +546,8 @@ void wipe_wifi_popup() {
 }
 
 void load_settings() {
-  prefs.begin("sys_config", true);
   load_location_prefs();
+  prefs.begin("sys_config", true);
   
   String s = prefs.getString("dev_name", "ESP32-S3-Panel");
   s.toCharArray(deviceName, 32);
@@ -2583,126 +2583,132 @@ void update_weather_ui(weather_type_t type, bool is_night) {
 /* ================= SETUP & LOOP ================= */
 
 void setup() {
-  Serial.begin(115200);
-  Wire.begin(47, 48);
-  Wire.setTimeOut(100);
+    Serial.begin(115200);
+    Wire.begin(47, 48);
+    Wire.setTimeOut(100);
 
-  Wire.beginTransmission(GT911_ADDR);
-  Wire.write(0x81); Wire.write(0x40); Wire.write(0x01);
-  Wire.endTransmission();
-  delay(100);
+    Wire.beginTransmission(GT911_ADDR);
+    Wire.write(0x81); Wire.write(0x40); Wire.write(0x01);
+    Wire.endTransmission();
+    delay(100);
 
-  if (power.begin(Wire, AXP2101_SLAVE_ADDRESS, 47, 48)) {
-    power.disableIRQ(XPOWERS_AXP2101_ALL_IRQ);
-    power.clearIrqStatus();
-    adcOn();
-  }
+    if (power.begin(Wire, AXP2101_SLAVE_ADDRESS, 47, 48)) {
+        power.disableIRQ(XPOWERS_AXP2101_ALL_IRQ);
+        power.clearIrqStatus();
+        adcOn();
+    }
 
-  if (qmi.begin(Wire, QMI8658_L_SLAVE_ADDRESS, 47, 48)) {
-    qmi.configAccelerometer(SensorQMI8658::ACC_RANGE_4G, SensorQMI8658::ACC_ODR_1000Hz, SensorQMI8658::LPF_MODE_0);
-    qmi.enableAccelerometer();
-  }
+    if (qmi.begin(Wire, QMI8658_L_SLAVE_ADDRESS, 47, 48)) {
+        qmi.configAccelerometer(SensorQMI8658::ACC_RANGE_4G, SensorQMI8658::ACC_ODR_1000Hz, SensorQMI8658::LPF_MODE_0);
+        qmi.enableAccelerometer();
+    }
 
-  gfx->begin();
-  gfx->fillScreen(RGB565_BLACK);
+    gfx->begin();
+    gfx->fillScreen(RGB565_BLACK);
 
-  ledcAttach(LCD_BL_PIN, 5000, 8);
-  ledcWrite(LCD_BL_PIN, 0);
+    ledcAttach(LCD_BL_PIN, 5000, 8);
+    ledcWrite(LCD_BL_PIN, 0);
 
-  lv_init();
-  lv_tick_set_cb([]{ return millis(); });
+    lv_init();
+    lv_tick_set_cb([]{ return millis(); });
 
-  screenWidth = gfx->width(); screenHeight = gfx->height();
+    screenWidth = gfx->width(); screenHeight = gfx->height();
 
-  bufSize = screenWidth * 40; 
-  disp_draw_buf = (lv_color_t*)heap_caps_malloc(bufSize * sizeof(lv_color_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
-  
-  disp = lv_display_create(screenWidth, screenHeight);
-  lv_display_set_flush_cb(disp, my_disp_flush);
-  lv_display_set_buffers(disp, disp_draw_buf, NULL, bufSize * sizeof(lv_color_t), LV_DISPLAY_RENDER_MODE_PARTIAL);
-  
-  lv_indev_t *indev = lv_indev_create();
-  lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);
-  lv_indev_set_read_cb(indev, touch_read_cb);
+    bufSize = screenWidth * 40; 
+    disp_draw_buf = (lv_color_t*)heap_caps_malloc(bufSize * sizeof(lv_color_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    
+    disp = lv_display_create(screenWidth, screenHeight);
+    lv_display_set_flush_cb(disp, my_disp_flush);
+    lv_display_set_buffers(disp, disp_draw_buf, NULL, bufSize * sizeof(lv_color_t), LV_DISPLAY_RENDER_MODE_PARTIAL);
+    
+    lv_indev_t *indev = lv_indev_create();
+    lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);
+    lv_indev_set_read_cb(indev, touch_read_cb);
 
-  load_settings();
+    load_settings(); 
 
-  screen_home = lv_obj_create(NULL);
-  lv_obj_set_style_bg_color(screen_home, lv_color_white(), 0);
-  
-  screen_notifications = lv_obj_create(NULL);
-  screen_power = lv_obj_create(NULL);
-  screen_settings_menu = lv_obj_create(NULL);
-  screen_about = lv_obj_create(NULL);
-  screen_wifi = lv_obj_create(NULL);
-  screen_ha = lv_obj_create(NULL);
-  screen_time_date = lv_obj_create(NULL);
-  screen_location = lv_obj_create(NULL);
+    screen_home = lv_obj_create(NULL);
+    lv_obj_set_style_bg_color(screen_home, lv_color_white(), 0);
+    
+    screen_notifications = lv_obj_create(NULL);
+    screen_power = lv_obj_create(NULL);
+    screen_settings_menu = lv_obj_create(NULL);
+    screen_about = lv_obj_create(NULL);
+    screen_wifi = lv_obj_create(NULL);
+    screen_ha = lv_obj_create(NULL);
+    screen_time_date = lv_obj_create(NULL);
+    screen_location = lv_obj_create(NULL);
 
-  create_switch_grid(screen_home);
-  create_page_dots(screen_home, 1);
+    create_switch_grid(screen_home);
+    create_page_dots(screen_home, 1);
 
-  create_notifications_page(screen_notifications);
-  create_power_screen(screen_power);
-  create_settings_menu_screen(screen_settings_menu); 
-  create_wifi_screen(screen_wifi);
-  create_ha_screen(screen_ha); 
-  create_about_screen(screen_about);
-  create_time_date_screen(screen_time_date);
-  create_location_screen(screen_location);
+    create_notifications_page(screen_notifications);
+    create_power_screen(screen_power);
+    create_settings_menu_screen(screen_settings_menu); 
+    create_wifi_screen(screen_wifi);
+    create_ha_screen(screen_ha); 
+    create_about_screen(screen_about);
+    create_time_date_screen(screen_time_date);
+    create_location_screen(screen_location);
 
-  ui_init();
+    ui_init();
 
-  if (ui_uiIconWeather != NULL) {
-    lv_obj_add_flag(ui_uiIconWeather, LV_OBJ_FLAG_HIDDEN);
-  }
+    if (ui_uiIconWeather != NULL) {
+        lv_obj_add_flag(ui_uiIconWeather, LV_OBJ_FLAG_HIDDEN);
+    }
 
-  lv_obj_add_event_cb(screen_home, swipe_event_cb, LV_EVENT_GESTURE, NULL);
-  lv_obj_add_event_cb(screen_notifications, swipe_event_cb, LV_EVENT_GESTURE, NULL);
-  lv_obj_add_event_cb(screen_settings_menu, swipe_event_cb, LV_EVENT_GESTURE, NULL);
+    lv_obj_add_event_cb(screen_home, swipe_event_cb, LV_EVENT_GESTURE, NULL);
+    lv_obj_add_event_cb(screen_notifications, swipe_event_cb, LV_EVENT_GESTURE, NULL);
+    lv_obj_add_event_cb(screen_settings_menu, swipe_event_cb, LV_EVENT_GESTURE, NULL);
 
-  lv_scr_load(screen_home);
-  clock_label = lv_label_create(screen_home);
-  lv_obj_set_style_text_color(clock_label, lv_color_black(), 0);
-  lv_obj_set_style_text_font(clock_label, &lv_font_montserrat_24, 0); 
-  lv_obj_align(clock_label, LV_ALIGN_TOP_MID, 0, 10);
+    lv_scr_load(screen_home);
+    clock_label = lv_label_create(screen_home);
+    lv_obj_set_style_text_color(clock_label, lv_color_black(), 0);
+    lv_obj_set_style_text_font(clock_label, &lv_font_montserrat_24, 0); 
+    lv_obj_align(clock_label, LV_ALIGN_TOP_MID, 0, 10);
 
-  configTime(sysLoc.utc_offset, 0, "pool.ntp.org", "time.nist.gov");
-  if (!rtc.begin(Wire, 47, 48)) { rtc.begin(Wire, 47, 48); }
+    configTime(sysLoc.utc_offset, 0, "pool.ntp.org", "time.nist.gov");
+    if (!rtc.begin(Wire, 47, 48)) { rtc.begin(Wire, 47, 48); }
 
-  if (wifi_enabled) {
-      Serial.println("Restoring WiFi Connection...");
-      WiFi.begin(wifi_ssid, wifi_pass);
-      wifiClient.setTimeout(500);
-      
-      current_wifi_state = WIFI_CONNECTING; 
-      wifi_connect_start = millis();
-      
-      if(lbl_wifi_status) {
-         lv_label_set_text(lbl_wifi_status, "Status: Restoring connection...");
-         lv_obj_set_style_text_color(lbl_wifi_status, lv_palette_main(LV_PALETTE_ORANGE), 0);
-      }
-  } else {
-      WiFi.mode(WIFI_OFF);
-      current_wifi_state = WIFI_IDLE;
-  }
-  
-  if(wifi_enabled) {
-     if(sw_wifi_enable) lv_obj_add_state(sw_wifi_enable, LV_STATE_CHECKED);
-     if(cont_wifi_inputs) lv_obj_clear_flag(cont_wifi_inputs, LV_OBJ_FLAG_HIDDEN);
-  } else {
-     if(sw_wifi_enable) lv_obj_clear_state(sw_wifi_enable, LV_STATE_CHECKED);
-     if(cont_wifi_inputs) lv_obj_add_flag(cont_wifi_inputs, LV_OBJ_FLAG_HIDDEN);
-  }
+    if (wifi_enabled) {
+        if(sw_wifi_enable) lv_obj_add_state(sw_wifi_enable, LV_STATE_CHECKED);
+        if(cont_wifi_inputs) lv_obj_clear_flag(cont_wifi_inputs, LV_OBJ_FLAG_HIDDEN);
+        
+        if (strlen(wifi_ssid) > 0) {
+            Serial.println("Restoring WiFi Connection...");
+            WiFi.mode(WIFI_STA);
+            WiFi.begin(wifi_ssid, wifi_pass);
+            wifiClient.setTimeout(500);
+            
+            current_wifi_state = WIFI_CONNECTING; 
+            wifi_connect_start = millis();
+            
+            if(lbl_wifi_status) {
+                lv_label_set_text(lbl_wifi_status, "Status: Restoring connection...");
+                lv_obj_set_style_text_color(lbl_wifi_status, lv_palette_main(LV_PALETTE_ORANGE), 0);
+            }
+        } else {
+             if(lbl_wifi_status) lv_label_set_text(lbl_wifi_status, "Status: Enter Credentials");
+             current_wifi_state = WIFI_IDLE;
+        }
+    } else {
+        if(sw_wifi_enable) lv_obj_clear_state(sw_wifi_enable, LV_STATE_CHECKED);
+        if(cont_wifi_inputs) lv_obj_add_flag(cont_wifi_inputs, LV_OBJ_FLAG_HIDDEN);
+        
+        WiFi.disconnect();
+        WiFi.mode(WIFI_OFF);
+        current_wifi_state = WIFI_IDLE;
+    }
 
-  refresh_saved_wifi_list_ui();
+    refresh_saved_wifi_list_ui();
 
-  if (strlen(mqtt_host) > 0 && mqtt_port > 0) {
-      mqtt.setServer(mqtt_host, mqtt_port);
-      mqtt.setCallback(mqtt_callback);
-  }
-  mqtt_retry_count = 0; 
-  last_touch_ms = millis();
+    if (strlen(mqtt_host) > 0 && mqtt_port > 0) {
+        mqtt.setServer(mqtt_host, mqtt_port);
+        mqtt.setCallback(mqtt_callback);
+    }
+    mqtt_retry_count = 0; 
+    last_touch_ms = millis();
+    last_wifi_check = millis();
 }
 
 void loop() {
