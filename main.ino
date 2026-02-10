@@ -1161,6 +1161,28 @@ void sw_wifi_event_cb(lv_event_t * e) {
                 lv_obj_set_style_text_color(lbl_ha_status, lv_palette_main(LV_PALETTE_GREY), 0);
             }
         }
+
+        if (ntp_auto_update) {
+            ntp_auto_update = false;
+            prefs.begin("sys_config", false);
+            prefs.putBool("ntp_auto", false);
+            prefs.end();
+
+            if(sw_ntp_auto) lv_obj_clear_state(sw_ntp_auto, LV_STATE_CHECKED);            
+            if(cont_manual_time) lv_obj_clear_flag(cont_manual_time, LV_OBJ_FLAG_HIDDEN);
+        }
+
+        if (!sysLoc.is_manual) {
+            sysLoc.is_manual = true;
+            save_location_prefs();
+
+            if(sw_auto_location) lv_obj_clear_state(sw_auto_location, LV_STATE_CHECKED);
+            if(cont_manual_loc) lv_obj_clear_flag(cont_manual_loc, LV_OBJ_FLAG_HIDDEN);
+            if(lbl_loc_current) {
+                 String s = "Current: " + String(sysLoc.city) + "\n(WiFi Disabled)";
+                 lv_label_set_text(lbl_loc_current, s.c_str());
+            }
+        }
     }
 }
 
@@ -1918,36 +1940,29 @@ void loc_ta_event_cb(lv_event_t * e) {
 
 void location_screen_load_cb(lv_event_t * e) {
     bool has_wifi = (WiFi.status() == WL_CONNECTED);
-    String statusStr = "Current: " + String(sysLoc.city);
+    String currStr = "Current: " + String(sysLoc.city);
 
-    if (!has_wifi) {
-        // CASE 1: NO WIFI
-        // Force Switch OFF (Visually)
-        lv_obj_clear_state(sw_auto_location, LV_STATE_CHECKED);
-        
-        // Hide Search/Save container (Can't search offline)
+    if (!sysLoc.is_manual) {
+        // Auto Mode
+        lv_obj_add_state(sw_auto_location, LV_STATE_CHECKED);
         lv_obj_add_flag(cont_manual_loc, LV_OBJ_FLAG_HIDDEN);
         
-        // Update Label to indicate offline state
-        statusStr += "\n(Offline - Using Saved)";
-    } 
-    else {
-        // CASE 2: WIFI AVAILABLE
-        // Set switch based on actual mode
-        if (!sysLoc.is_manual) {
-            // Auto Mode: Switch ON, Hide Manual Search
-            lv_obj_add_state(sw_auto_location, LV_STATE_CHECKED);
-            lv_obj_add_flag(cont_manual_loc, LV_OBJ_FLAG_HIDDEN);
-            statusStr += "\n(Auto IP)";
+        if (has_wifi) {
+            currStr += "\n(Auto IP)";
         } else {
-            // Manual Mode: Switch OFF, Show Manual Search
-            lv_obj_clear_state(sw_auto_location, LV_STATE_CHECKED);
-            lv_obj_clear_flag(cont_manual_loc, LV_OBJ_FLAG_HIDDEN);
-            statusStr += "\n(Manual)";
+            // Visual warning only - doesn't change settings!
+            currStr += "\n(Waiting for WiFi...)"; 
+            lv_obj_set_style_text_color(lbl_loc_current, lv_palette_main(LV_PALETTE_ORANGE), 0);
         }
+    } else {
+        // Manual Mode
+        lv_obj_clear_state(sw_auto_location, LV_STATE_CHECKED);
+        lv_obj_clear_flag(cont_manual_loc, LV_OBJ_FLAG_HIDDEN);
+        currStr += "\n(Manual)";
+        lv_obj_set_style_text_color(lbl_loc_current, lv_color_black(), 0);
     }
-
-    if(lbl_loc_current) lv_label_set_text(lbl_loc_current, statusStr.c_str());
+    
+    if(lbl_loc_current) lv_label_set_text(lbl_loc_current, currStr.c_str());
 }
 
 // 2. UPDATED: Save Button (Updates Label Immediately)
