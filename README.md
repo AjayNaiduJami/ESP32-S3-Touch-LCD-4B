@@ -14,9 +14,16 @@ A feature-rich, touch-screen Smart Home Control Panel built for the **Waveshare 
 
 ### 🌤️ Weather & Location
 
-* **Auto-Location:** Automatically detects city and coordinates using `ip-api.com`.
-* **Live Weather:** Fetches real-time weather data from `open-meteo.com` (No API Key required).
-* **Dynamic UI:** Background images and weather icons change dynamically based on conditions (Rain, Snow, Clear, Clouds) and time of day (Day/Night).
+The system uses a smart **Hybrid Location Strategy** to ensure weather and time data are always accurate, even after a reboot.
+
+* **Dual-Mode Location:**
+    * **Auto (IP-Based):** Automatically detects your city and coordinates using your WiFi's public IP via `ip-api.com`.
+    * **Manual Override:** Search for any city globally using the built-in keyboard. The system uses the `open-meteo` Geocoding API to find the exact latitude/longitude.
+* **Persistent Settings:** Your chosen location (whether Auto or Manual) is saved to the ESP32's non-volatile memory (NVS). The device wakes up knowing exactly where it is, without needing to re-fetch data immediately.
+* **Live Weather:** Fetches real-time weather conditions from `open-meteo.com` (No API Key required).
+* **Dynamic UI:** The home screen adapts to your environment:
+    * **Conditions:** Visuals change for Clear, Rain, Snow, Clouds, Thunderstorms, and Fog.
+    * **Day/Night Cycle:** Backgrounds automatically switch between Day and Night themes based on your location's local sunset/sunrise times.
 
 ### 🔔 Notification System
 
@@ -225,6 +232,10 @@ In **SquareLine Studio**, these assets were imported to create the image widgets
     <td align="center">
       <img src="docs/screenshots/date_time.jpeg" width="220"/><br/>
       <sub>Date/Time Screen</sub>
+    </td>
+    <td align="center">
+      <img src="docs/screenshots/location_screen.jpeg" width="220"/><br/>
+      <sub>Location Screen</sub>
     </td>
     <td align="center">
       <img src="docs/screenshots/system_status.jpeg" width="220"/><br/>
