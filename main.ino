@@ -1337,11 +1337,15 @@ void settings_menu_event_cb(lv_event_t *e) {
 /* ================= Display Settings ================= */
 
 void set_brightness(int percent) {
+    // 1. Safety Clamp
     if (percent < 0) percent = 0;
     if (percent > 100) percent = 100;
     
-    // Map 0-100 to 255-0
-    int duty = map(percent, 0, 100, 150, 0); 
+    // 2. Active Low Mapping with Limit
+    // Map 0% - 100%  --->  180 (Dim) - 0 (Bright)
+    // We stop at 180 because >180 turns the backlight off completely on this panel.
+    int duty = map(percent, 0, 100, 180, 0); 
+    
     ledcWrite(LCD_BL_PIN, duty);
 }
 
@@ -2898,12 +2902,14 @@ void loop() {
     unsigned long diff = 0;
     if (now >= last_touch_ms) diff = now - last_touch_ms;
 
-    // 1. STATE: DEEP SLEEP (Screen OFF)
-    // Check if sleep is enabled (>0) AND time exceeded
+    // STATE 1: DEEP SLEEP (Screen OFF)
     if (setting_sleep_ms > 0 && diff > setting_sleep_ms) {
         if (!is_backlight_off) {
-            Serial.println(">>> SLEEP <<<");
-            set_brightness(0); // OFF
+            Serial.println(">>> SLEEP (OFF) <<<");
+            
+            // EXPLICITLY TURN OFF (Override set_brightness mapping)
+            ledcWrite(LCD_BL_PIN, 255); 
+            
             is_backlight_off = true;      
             screensaver_force_bright = false;
         }
@@ -2912,8 +2918,7 @@ void loop() {
         }
     }
     
-    // 2. STATE: SCREENSAVER (Dimmed)
-    // Check if saver enabled (>0) AND time exceeded
+    // STATE 2: SCREENSAVER (Dimmed)
     else if (setting_saver_ms > 0 && diff > setting_saver_ms) {
         is_backlight_off = false; 
         if (lv_scr_act() != ui_uiScreenSleep && ui_uiScreenSleep != NULL) {
@@ -2922,30 +2927,32 @@ void loop() {
         }
         
         if (screensaver_force_bright) {
-            set_brightness(setting_brightness); // User defined max
+            set_brightness(setting_brightness); // Woke by tap? Bright.
         } else {
-            // Dim logic: Use 20% OR user setting if user set it lower than 20%
+            // Dim Logic: 
+            // If user brightness is > 20%, drop to 20%. 
+            // If user set it lower than 20% (e.g. 5%), keep it at 5%.
             int dim_level = (setting_brightness > 20) ? 20 : setting_brightness;
             set_brightness(dim_level); 
         }
     }
     
-    // 3. STATE: ACTIVE (Bright)
+    // STATE 3: ACTIVE (User Brightness)
     else {
         if (is_backlight_off || lv_scr_act() == ui_uiScreenSleep) {
             Serial.println(">>> WAKE <<<");
             lv_scr_load(screen_home); 
+            // Clear any pending clicks that woke the screen
             lv_indev_wait_release(lv_indev_get_act());
             if(msg_popup) { lv_obj_del(msg_popup); msg_popup = NULL; }
         }
         
-        // Apply User Brightness
+        // Apply User's chosen brightness (0-100 mapped to 180-0)
         set_brightness(setting_brightness); 
         
         is_backlight_off = false;
         screensaver_force_bright = false;
     }
-
     switch (current_wifi_state) {
         case WIFI_SCANNING: {
             lv_timer_handler(); 
