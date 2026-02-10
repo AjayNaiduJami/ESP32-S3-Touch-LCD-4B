@@ -1944,30 +1944,48 @@ void loc_ta_event_cb(lv_event_t * e) {
 }
 
 void location_screen_load_cb(lv_event_t * e) {
-    bool has_wifi = (WiFi.status() == WL_CONNECTED);
-    String currStr = "Current: " + String(sysLoc.city);
+    // STRICT CHECK: Both the switch must be ON and the hardware connected
+    bool is_online = (wifi_enabled && WiFi.status() == WL_CONNECTED);
+    
+    String statusStr = "Current: " + String(sysLoc.city);
 
-    if (!sysLoc.is_manual) {
-        // Auto Mode
-        lv_obj_add_state(sw_auto_location, LV_STATE_CHECKED);
+    if (!is_online) {
+        // --- OFFLINE STATE ---
+        // 1. Force the Auto switch visually OFF
+        lv_obj_clear_state(sw_auto_location, LV_STATE_CHECKED);
+        
+        // 2. CRITICAL: Hide the manual search container (Can't search offline)
         lv_obj_add_flag(cont_manual_loc, LV_OBJ_FLAG_HIDDEN);
         
-        if (has_wifi) {
-            currStr += "\n(Auto IP)";
+        // 3. Update text
+        if (!wifi_enabled) {
+            statusStr += "\n(WiFi Disabled)";
         } else {
-            // Visual warning only - doesn't change settings!
-            currStr += "\n(Waiting for WiFi...)"; 
-            lv_obj_set_style_text_color(lbl_loc_current, lv_palette_main(LV_PALETTE_ORANGE), 0);
+            statusStr += "\n(No Connection)";
         }
-    } else {
-        // Manual Mode
-        lv_obj_clear_state(sw_auto_location, LV_STATE_CHECKED);
-        lv_obj_clear_flag(cont_manual_loc, LV_OBJ_FLAG_HIDDEN);
-        currStr += "\n(Manual)";
+        
+        // Optional: Grey out the label to indicate inactive state
+        lv_obj_set_style_text_color(lbl_loc_current, lv_palette_main(LV_PALETTE_GREY), 0);
+    } 
+    else {
+        // --- ONLINE STATE ---
+        // Reset label color
         lv_obj_set_style_text_color(lbl_loc_current, lv_color_black(), 0);
+
+        if (!sysLoc.is_manual) {
+            // Auto Mode: Switch ON, Hide Manual Search
+            lv_obj_add_state(sw_auto_location, LV_STATE_CHECKED);
+            lv_obj_add_flag(cont_manual_loc, LV_OBJ_FLAG_HIDDEN);
+            statusStr += "\n(Auto IP)";
+        } else {
+            // Manual Mode: Switch OFF, SHOW Manual Search
+            lv_obj_clear_state(sw_auto_location, LV_STATE_CHECKED);
+            lv_obj_clear_flag(cont_manual_loc, LV_OBJ_FLAG_HIDDEN);
+            statusStr += "\n(Manual)";
+        }
     }
-    
-    if(lbl_loc_current) lv_label_set_text(lbl_loc_current, currStr.c_str());
+
+    if(lbl_loc_current) lv_label_set_text(lbl_loc_current, statusStr.c_str());
 }
 
 // 2. UPDATED: Save Button (Updates Label Immediately)
