@@ -454,19 +454,20 @@ void check_sensor_logic() {
   if (qmi.getAccelerometer(acc.x, acc.y, acc.z)) {
     float delta = abs(acc.x - last_acc_x) + abs(acc.y - last_acc_y) + abs(acc.z - last_acc_z);
     last_acc_x = acc.x; last_acc_y = acc.y; last_acc_z = acc.z;
-    if (delta > MOTION_THRESHOLD) {
-        if (is_backlight_off) {
+    if (delta > MOTION_THRESHOLD) {        
+        unsigned long now = millis();
+        unsigned long diff = (now >= last_touch_ms) ? (now - last_touch_ms) : 0;
+        bool is_screensaver_active = (setting_saver_ms > 0 && diff > setting_saver_ms);
+        if (is_backlight_off || is_screensaver_active) {
              if (setting_sleep_ms > setting_saver_ms && setting_saver_ms > 0) {
                  last_touch_ms = millis() - setting_saver_ms - 1000;
                  screensaver_force_bright = true; 
              } else {
                  last_touch_ms = millis();
-                 screensaver_force_bright = false;
              }
         } 
         else {
              last_touch_ms = millis();
-             screensaver_force_bright = false;
         }
     }
   }
@@ -2520,6 +2521,10 @@ void fetch_weather_data() {
     wifi_client_secure.setInsecure();
     delay(50); 
 
+    geo_lat = sysLoc.lat;
+    geo_lon = sysLoc.lon;
+    city_name = String(sysLoc.city);
+
     if (!sysLoc.is_manual) {
         Serial.println("Finding IP Geolocation...");
         update_loader_msg("Finding IP Location...");
@@ -2546,18 +2551,17 @@ void fetch_weather_data() {
                     city_name = String(sysLoc.city);
 
                     if (ui_uiLabelCity) lv_label_set_text(ui_uiLabelCity, sysLoc.city);
-                    Serial.printf("IP Loc: %s (%.4f, %.4f)\n", sysLoc.city, geo_lat, geo_lon);
+                    Serial.printf("IP Loc Found: %s (%.4f, %.4f)\n", sysLoc.city, geo_lat, geo_lon);
+                    
+                    save_location_prefs(); 
                 }
             } else {
-                Serial.printf("IP-API Error: %d\n", httpCode);
+                Serial.printf("IP-API Error: %d. Using saved coords.\n", httpCode);
             }
             http_client_insecure.end();
         }
     } else {
         Serial.println("Using Manual Location...");
-        geo_lat = sysLoc.lat;
-        geo_lon = sysLoc.lon;
-        city_name = String(sysLoc.city);
         if (ui_uiLabelCity) lv_label_set_text(ui_uiLabelCity, sysLoc.city);
     }
 
@@ -2601,8 +2605,11 @@ void fetch_weather_data() {
         }
     }
 
+    delay(50); 
+
+    // Step 3: Weather
     if (geo_lat != 0.0) {
-        Serial.println("Finding Weather...");
+        Serial.printf("Fetching Weather for: %.4f, %.4f\n", geo_lat, geo_lon); // Debug Print
         update_loader_msg("Updating Weather...");
         
         String url = "http://api.open-meteo.com/v1/forecast?latitude=" + String(geo_lat) + 
@@ -2623,13 +2630,15 @@ void fetch_weather_data() {
                 current_temp = docWeather["current_weather"]["temperature"];
                 weather_code = docWeather["current_weather"]["weathercode"];
                 is_day = docWeather["current_weather"]["is_day"];
+                
+                Serial.printf("API Data -> Temp: %.1f, Code: %d, Is_Day: %d\n", current_temp, weather_code, is_day);
+
                 initial_weather_fetched = true;
 
                 if(ui_uiLabelTemp) lv_label_set_text(ui_uiLabelTemp, (String(current_temp, 0) + "°").c_str());
                 if(ui_uiLabelWeather) lv_label_set_text(ui_uiLabelWeather, get_weather_description(weather_code).c_str());
                 
                 update_weather_ui(get_weather_type(weather_code), (is_day == 0));
-                Serial.printf("Weather: %.1fC\n", current_temp);
             } else {
                 Serial.printf("Weather Error: %d\n", wCode);
             }
@@ -2640,6 +2649,7 @@ void fetch_weather_data() {
     Serial.println("--- Fetch Complete ---");
     hide_loader();
 }
+
 void update_weather_ui(weather_type_t type, bool is_night) {
     
     if (ui_uiScreenSleep == NULL || ui_uiIconWeather == NULL) return;
@@ -2883,20 +2893,13 @@ void handle_weather_timer() {
     static uint32_t last_weather_update = 0;
     // Update every 30 mins (1800000 ms) if WiFi is connected and Auto is ON
     if (ntp_auto_update && WiFi.status() == WL_CONNECTED && (millis() - last_weather_update > 1800000)) {
+        Serial.println("30-min Weather Refresh Triggered");
         last_weather_update = millis();
         trigger_weather_update = true;
     }
 }
 
 void handle_clock_update() {
-
-    // Auto-refresh weather every 30 mins
-    static uint32_t last_weather_update = 0;
-    if (ntp_auto_update && WiFi.status() == WL_CONNECTED && (millis() - last_weather_update > 1800000)) {
-        last_weather_update = millis();
-        trigger_weather_update = true;
-    }
-
     if (millis() - lastMillis > 1000) {
         lastMillis = millis();
         RTC_DateTime dt = rtc.getDateTime();
@@ -3041,7 +3044,7 @@ void handle_wifi_state() {
             WiFi.disconnect(); WiFi.mode(WIFI_STA); delay(100);
             {
                 int n = WiFi.scanNetworks(false, false); 
-            
+
                 if(scan_list_ui) {
                     lv_obj_clean(scan_list_ui);
                     lv_obj_t * btn_cancel = lv_list_add_btn(scan_list_ui, LV_SYMBOL_CLOSE, " Close");
@@ -3099,8 +3102,12 @@ void handle_wifi_state() {
                     struct tm ti;
                     if (ntp_auto_update && getLocalTime(&ti, 2000)) { 
                         rtc.setDateTime(ti.tm_year + 1900, ti.tm_mon + 1, ti.tm_mday, ti.tm_hour, ti.tm_min, ti.tm_sec);
-                        trigger_weather_update = true;
+                    } else {
+                        Serial.println("NTP Sync delayed, proceeding with Weather fetch...");
                     }
+
+                    trigger_weather_update = true;
+
                     if (strlen(mqtt_host) > 0) {
                         mqtt_enabled = true; mqtt_retry_count = 0;
                         if(sw_mqtt_enable) lv_obj_add_state(sw_mqtt_enable, LV_STATE_CHECKED);
