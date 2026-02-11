@@ -2163,23 +2163,25 @@ void sw_auto_loc_cb(lv_event_t * e) {
     lv_obj_t *sw = (lv_obj_t *)lv_event_get_target(e); 
     bool auto_mode = lv_obj_has_state(sw, LV_STATE_CHECKED);
     
-    if (WiFi.status() != WL_CONNECTED) {
-        if (auto_mode) {
-            lv_obj_clear_state(sw, LV_STATE_CHECKED);
-            show_notification_popup("Error: \n\nNo WiFi Connection.\nCannot use Auto IP.", -1);
-        }
-        lv_obj_add_flag(cont_manual_loc, LV_OBJ_FLAG_HIDDEN);
+    if (auto_mode && WiFi.status() != WL_CONNECTED) {
+        lv_obj_clear_state(sw, LV_STATE_CHECKED);
+        show_notification_popup("Error: \n\nNo WiFi Connection.\nCannot use Auto IP.", -1);
+        lv_obj_clear_flag(cont_manual_loc, LV_OBJ_FLAG_HIDDEN);
         return; 
     }
     
     if (auto_mode) {
         lv_obj_add_flag(cont_manual_loc, LV_OBJ_FLAG_HIDDEN);
         sysLoc.is_manual = false;
-        save_location_prefs();
+        save_location_prefs(); 
         trigger_weather_update = true;
         if(lbl_loc_current) lv_label_set_text(lbl_loc_current, "Fetching IP Location...");
     } else {
         lv_obj_clear_flag(cont_manual_loc, LV_OBJ_FLAG_HIDDEN);
+        sysLoc.is_manual = true;
+        save_location_prefs();         
+        String savedStr = "Current: " + String(sysLoc.city) + " (Saved)";
+        if(lbl_loc_current) lv_label_set_text(lbl_loc_current, savedStr.c_str());
     }
 }
 
@@ -2552,8 +2554,6 @@ void fetch_weather_data() {
 
                     if (ui_uiLabelCity) lv_label_set_text(ui_uiLabelCity, sysLoc.city);
                     Serial.printf("IP Loc Found: %s (%.4f, %.4f)\n", sysLoc.city, geo_lat, geo_lon);
-                    
-                    save_location_prefs(); 
                 }
             } else {
                 Serial.printf("IP-API Error: %d. Using saved coords.\n", httpCode);
@@ -2565,7 +2565,7 @@ void fetch_weather_data() {
         if (ui_uiLabelCity) lv_label_set_text(ui_uiLabelCity, sysLoc.city);
     }
 
-    if (geo_lat != 0.0) {
+    if (ntp_auto_update && geo_lat != 0.0) {
         Serial.println("Finding Time...");
         update_loader_msg("Syncing Time...");
         
@@ -2892,7 +2892,7 @@ void setup() {
 void handle_weather_timer() {
     static uint32_t last_weather_update = 0;
     // Update every 30 mins (1800000 ms) if WiFi is connected and Auto is ON
-    if (ntp_auto_update && WiFi.status() == WL_CONNECTED && (millis() - last_weather_update > 1800000)) {
+    if (WiFi.status() == WL_CONNECTED && (millis() - last_weather_update > 1800000)) {
         Serial.println("30-min Weather Refresh Triggered");
         last_weather_update = millis();
         trigger_weather_update = true;
