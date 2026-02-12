@@ -946,6 +946,8 @@ void mqtt_callback(char* topic, byte* payload, unsigned int len) {
 
     // 1. HANDLE CONFIGURATION UPDATE
     if (strcmp(topic, "ha/panel/config/set") == 0) {
+        show_loader("Updating Layout...");
+
         JsonDocument doc;
         DeserializationError error = deserializeJson(doc, p_buff);
         
@@ -969,9 +971,10 @@ void mqtt_callback(char* topic, byte* payload, unsigned int len) {
             save_grid_config(); // Save to NVS
             // --- FIX IS HERE ---
             Serial.println("Config updated. Refreshing UI...");
-            create_switch_grid(screen_home); // Redraw buttons dynamically!
-            // ESP.restart(); // DELETE THIS LINE
+            create_switch_grid(screen_home);
+            mqtt.publish("ha/panel/sync", "get_states");
         }
+        hide_loader();
     }
 
     // 2. NEW: HANDLE STATE UPDATES FROM HA
@@ -3438,12 +3441,17 @@ void handle_mqtt_loop() {
                     
                     if(connected) {
                         Serial.println("MQTT Success!");
-                        mqtt_retry_count = 0; 
-                        // Subscribe to the Config Topic!
+                        mqtt_retry_count = 0;
+
+                        show_loader("Syncing States...");
+
                         mqtt.subscribe("ha/panel/config/set");
-                        for(int i=0; i<MAX_BUTTONS; i++) mqtt.subscribe(switches[i].topic_state);
                         mqtt.subscribe("ha/panel/state/update");
                         mqtt.subscribe(mqtt_topic_notify);
+
+                        mqtt.publish("ha/panel/sync", "get_states");
+                        delay(500);
+                        hide_loader();
                     }
                 }
             }
