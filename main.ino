@@ -619,6 +619,7 @@ void load_settings() {
   prefs.end();
   
   load_saved_networks();
+  load_grid_config();
 }
 
 void save_device_name(const char* new_name) {
@@ -1303,18 +1304,16 @@ void ta_event_cb(lv_event_t * e) {
 }
 
 void switch_event_cb(lv_event_t *e) {
+    // Get the index passed from create_switch_grid
     int idx = (intptr_t)lv_event_get_user_data(e);
     
     // Toggle State Visual
     my_switches[idx].state = !my_switches[idx].state;
     
     // Send Universal Command
-    // Topic: ha/panel/command
-    // Payload: {"entity_id": "light.kitchen", "action": "toggle"}
-    
     JsonDocument doc;
     doc["entity_id"] = my_switches[idx].entity_id;
-    doc["action"] = "toggle"; // Or "turn_on" / "turn_off"
+    doc["action"] = "toggle"; 
     
     char buffer[128];
     serializeJson(doc, buffer);
@@ -2017,13 +2016,31 @@ void create_switch_grid(lv_obj_t *parent) {
   lv_obj_clear_flag(grid, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_set_grid_dsc_array(grid, col_dsc, row_dsc);
 
-  for (int i = 0; i < SWITCH_COUNT; i++) {
-    switches[i].btn = lv_btn_create(grid);
-    lv_obj_set_grid_cell(switches[i].btn, LV_GRID_ALIGN_STRETCH, i % GRID_COLS, 1, LV_GRID_ALIGN_STRETCH, i / GRID_COLS, 1);
-    lv_obj_add_event_cb(switches[i].btn, switch_event_cb, LV_EVENT_CLICKED, &switches[i]);
-    lv_obj_t *icon = lv_label_create(switches[i].btn); lv_label_set_text(icon, icons[i]); lv_obj_align(icon, LV_ALIGN_TOP_MID, 0, 8);
-    lv_obj_t *name = lv_label_create(switches[i].btn); lv_label_set_text(name, switches[i].name); lv_obj_align(name, LV_ALIGN_CENTER, 0, 10);
-    switches[i].label = lv_label_create(switches[i].btn); lv_label_set_text(switches[i].label, "OFF"); lv_obj_align(switches[i].label, LV_ALIGN_BOTTOM_MID, 0, -6);
+  for (int i = 0; i < MAX_BUTTONS; i++) {
+    lv_obj_t *btn = lv_btn_create(grid);
+    lv_obj_set_grid_cell(btn, LV_GRID_ALIGN_STRETCH, i % GRID_COLS, 1, LV_GRID_ALIGN_STRETCH, i / GRID_COLS, 1);
+    
+    // IMPORTANT: Pass the integer index 'i' to the event handler
+    lv_obj_add_event_cb(btn, switch_event_cb, LV_EVENT_CLICKED, (void*)(intptr_t)i);
+    
+    // 1. Icon (from Dynamic Config)
+    lv_obj_t *icon = lv_label_create(btn); 
+    // Use the icon from my_switches, default to PLUS if empty
+    const char* icon_symbol = (strlen(my_switches[i].icon) > 0) ? my_switches[i].icon : LV_SYMBOL_PLUS;
+    lv_label_set_text(icon, icon_symbol); 
+    lv_obj_align(icon, LV_ALIGN_TOP_MID, 0, 8);
+    
+    // 2. Name (from Dynamic Config)
+    lv_obj_t *name = lv_label_create(btn); 
+    // Use name from my_switches, default to "Unset" if empty
+    const char* label_text = (strlen(my_switches[i].name) > 0) ? my_switches[i].name : "Unset";
+    lv_label_set_text(name, label_text); 
+    lv_obj_align(name, LV_ALIGN_CENTER, 0, 10);
+    
+    // 3. State Label
+    lv_obj_t *label = lv_label_create(btn); 
+    lv_label_set_text(label, "OFF"); 
+    lv_obj_align(label, LV_ALIGN_BOTTOM_MID, 0, -6);
   }
 }
 
