@@ -958,21 +958,21 @@ void mqtt_callback(char* topic, byte* payload, unsigned int len) {
                 
                 const char* n = buttons[i]["name"];
                 const char* e = buttons[i]["entity"];
-                const char* ic = buttons[i]["icon"]; // Send "light", "fan", "power" strings
+                const char* ic = buttons[i]["icon"];
                 
                 strncpy(my_switches[i].name, n, 15);
                 strncpy(my_switches[i].entity_id, e, 63);
                 
-                // Map text icon names to LVGL symbols
                 if(strcmp(ic, "light") == 0) strncpy(my_switches[i].icon, LV_SYMBOL_BELL, 7);
                 else if(strcmp(ic, "fan") == 0) strncpy(my_switches[i].icon, LV_SYMBOL_REFRESH, 7);
                 else strncpy(my_switches[i].icon, LV_SYMBOL_POWER, 7);
             }
-            save_grid_config(); // Save to NVS
-            // --- FIX IS HERE ---
+            save_grid_config(); 
             Serial.println("Config updated. Refreshing UI...");
-            create_switch_grid(screen_home);
-            mqtt.publish("ha/panel/sync", "get_states");
+            create_switch_grid(screen_home); 
+            if (mqtt.connected()) {
+                 mqtt.publish("ha/panel/sync", "get_states");
+            }
         }
         hide_loader();
     }
