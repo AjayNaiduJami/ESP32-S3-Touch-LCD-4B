@@ -19,7 +19,6 @@
 
 /* ================= CONFIG ================= */
 
-#define SWITCH_COUNT 9
 #define GRID_COLS 3
 #define MAX_BUTTONS 9
 
@@ -234,7 +233,7 @@ struct DynamicSwitch {
 
 DynamicSwitch my_switches[MAX_BUTTONS];
 
-HaSwitch switches[SWITCH_COUNT] = {
+HaSwitch switches[MAX_BUTTONS] = {
   { "LIGHT", "ha/panel/light/set", "ha/panel/light/state", false, NULL, NULL },
   { "FAN",   "ha/panel/fan/set",   "ha/panel/fan/state",   false, NULL, NULL },
   { "AC",    "ha/panel/ac/set",    "ha/panel/ac/state",    false, NULL, NULL },
@@ -246,7 +245,7 @@ HaSwitch switches[SWITCH_COUNT] = {
   { "ALL",   "ha/panel/all/set",   "ha/panel/all/state",   false, NULL, NULL }
 };
 
-const char* icons[SWITCH_COUNT] = {
+const char* icons[MAX_BUTTONS] = {
   LV_SYMBOL_POWER, LV_SYMBOL_REFRESH, LV_SYMBOL_WARNING,
   LV_SYMBOL_CHARGE, LV_SYMBOL_VIDEO, LV_SYMBOL_HOME,
   LV_SYMBOL_WARNING, LV_SYMBOL_WARNING, LV_SYMBOL_OK
@@ -587,6 +586,25 @@ void wipe_wifi_popup() {
     }
 }
 
+void reset_grid_to_defaults() {
+    Serial.println("--- RESETTING GRID CONFIGURATION ---");
+
+    prefs.begin("grid_cfg", false);
+    prefs.clear(); 
+    prefs.end();
+
+    for (int i = 0; i < MAX_BUTTONS; i++) {
+        snprintf(my_switches[i].name, 16, "Unset");
+        snprintf(my_switches[i].entity_id, 64, "none");
+        snprintf(my_switches[i].icon, 8, LV_SYMBOL_PLUS);
+        my_switches[i].state = false;
+    }
+    save_grid_config();
+
+    if (screen_home) create_switch_grid(screen_home);
+}
+
+
 void load_settings() {
   load_location_prefs();
   load_display_prefs();
@@ -704,7 +722,7 @@ void save_ha_settings(const char* h, const char* p_str, const char* u, const cha
 
           // Subscribe to the Config Topic!
           mqtt.subscribe("ha/panel/config/set");
-          for(int i=0; i<SWITCH_COUNT; i++) mqtt.subscribe(switches[i].topic_state);
+          for(int i=0; i<MAX_BUTTONS; i++) mqtt.subscribe(switches[i].topic_state);
           mqtt.subscribe("ha/panel/state/update");
           mqtt.subscribe(mqtt_topic_notify);
       } else {
@@ -1319,6 +1337,11 @@ void btn_save_ha_cb(lv_event_t * e) {
     lv_obj_add_flag(kb_ha, LV_OBJ_FLAG_HIDDEN);
 }
 
+void btn_reset_grid_cb(lv_event_t * e) {
+    reset_grid_to_defaults();    
+    show_notification_popup("Layout Reset to Defaults!", -1);
+}
+
 void ta_event_cb(lv_event_t * e) {
   lv_event_code_t code = lv_event_get_code(e);
   lv_obj_t * ta = (lv_obj_t *)lv_event_get_target(e);
@@ -1826,10 +1849,20 @@ void create_ha_screen(lv_obj_t *parent) {
     lv_label_set_text(lbl_ha_status, "Status: Not Connected");
     lv_obj_set_style_text_color(lbl_ha_status, lv_palette_darken(LV_PALETTE_GREY, 2), 0);
     lv_obj_align(lbl_ha_status, LV_ALIGN_TOP_LEFT, 10, 165); 
+    
+    lv_obj_t *btn_reset = lv_btn_create(cont_ha_inputs);
+    lv_obj_set_size(btn_reset, 140, 45);
+    lv_obj_align(btn_reset, LV_ALIGN_BOTTOM_LEFT, 40, -10);
+    lv_obj_set_style_bg_color(btn_reset, lv_palette_main(LV_PALETTE_RED), 0);
+    lv_obj_add_event_cb(btn_reset, btn_reset_grid_cb, LV_EVENT_CLICKED, NULL);
+
+    lv_obj_t *lbl_reset = lv_label_create(btn_reset);
+    lv_label_set_text(lbl_reset, "Reset Layout");
+    lv_obj_center(lbl_reset);
 
     lv_obj_t *btn_save = lv_btn_create(cont_ha_inputs);
     lv_obj_set_size(btn_save, 140, 45);
-    lv_obj_align(btn_save, LV_ALIGN_BOTTOM_MID, 0, -10);
+    lv_obj_align(btn_save, LV_ALIGN_BOTTOM_RIGHT, -40, -10);
     lv_obj_set_style_bg_color(btn_save, lv_palette_main(LV_PALETTE_GREEN), 0);
     lv_obj_add_event_cb(btn_save, btn_save_ha_cb, LV_EVENT_CLICKED, NULL);
     
@@ -3403,7 +3436,7 @@ void handle_mqtt_loop() {
                         mqtt_retry_count = 0; 
                         // Subscribe to the Config Topic!
                         mqtt.subscribe("ha/panel/config/set");
-                        for(int i=0; i<SWITCH_COUNT; i++) mqtt.subscribe(switches[i].topic_state);
+                        for(int i=0; i<MAX_BUTTONS; i++) mqtt.subscribe(switches[i].topic_state);
                         mqtt.subscribe("ha/panel/state/update");
                         mqtt.subscribe(mqtt_topic_notify);
                     }
