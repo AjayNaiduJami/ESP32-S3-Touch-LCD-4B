@@ -101,10 +101,10 @@ bool trigger_weather_update = false;
 
 SystemLocation sysLoc = { 0.0, 0.0, 0, "Initial", false, false };
 
-WiFiClient wifi_client_insecure;
-WiFiClientSecure wifi_client_secure;
-HTTPClient http_client_insecure;
-HTTPClient http_client_secure;
+// WiFiClient wifi_client_insecure;
+// WiFiClientSecure wifi_client_secure;
+// HTTPClient http_client_insecure;
+// HTTPClient http_client_secure;
 
 typedef enum {
     WEATHER_CLEAR = 0,
@@ -918,7 +918,7 @@ void mqtt_callback(char* topic, byte* payload, unsigned int len) {
     Serial.print("Message arrived [");
     Serial.print(topic);
     Serial.println("]");
-    
+
     char p_buff[2048]; // Increase buffer for large JSON
     if (len >= 2048) len = 2047;
     memcpy(p_buff, payload, len);
@@ -2257,8 +2257,8 @@ void perform_geocoding_search(const char* query) {
 
     show_loader("Searching City...");
     
-    HTTPClient http;
     WiFiClient client;
+    HTTPClient http;
     
     String q = String(query);
     q.replace(" ", "+");
@@ -2583,23 +2583,27 @@ void fetch_weather_data() {
         return;
     }
     show_loader("Resolving Location...");
-
-    wifi_client_secure.setInsecure();
     delay(50); 
 
     geo_lat = sysLoc.lat;
     geo_lon = sysLoc.lon;
     city_name = String(sysLoc.city);
 
+    // ---------------------------------------------
+    // 1. IP Geolocation (HTTP)
+    // ---------------------------------------------
     if (!sysLoc.is_manual) {
         Serial.println("Finding IP Geolocation...");
         update_loader_msg("Finding IP Location...");
         
-        http_client_insecure.setReuse(false);
-        if (http_client_insecure.begin(wifi_client_insecure, "http://ip-api.com/json/?fields=status,lat,lon,city")) {
-            int httpCode = http_client_insecure.GET();
+        WiFiClient client;  // Local instance
+        HTTPClient http;    // Local instance
+        
+        http.setReuse(false);
+        if (http.begin(client, "http://ip-api.com/json/?fields=status,lat,lon,city")) {
+            int httpCode = http.GET();
             if (httpCode == 200) {
-                String payload = http_client_insecure.getString();
+                String payload = http.getString();
                 JsonDocument docLoc;
                 deserializeJson(docLoc, payload);
 
@@ -2615,32 +2619,38 @@ void fetch_weather_data() {
                         sysLoc.city[31] = '\0';
                     }
                     city_name = String(sysLoc.city);
-
                     if (ui_uiLabelCity) lv_label_set_text(ui_uiLabelCity, sysLoc.city);
                     Serial.printf("IP Loc Found: %s (%.4f, %.4f)\n", sysLoc.city, geo_lat, geo_lon);
                 }
             } else {
                 Serial.printf("IP-API Error: %d. Using saved coords.\n", httpCode);
             }
-            http_client_insecure.end();
+            http.end(); // Important: Close connection
         }
     } else {
         Serial.println("Using Manual Location...");
         if (ui_uiLabelCity) lv_label_set_text(ui_uiLabelCity, sysLoc.city);
     }
 
+    // ---------------------------------------------
+    // 2. Time Sync (HTTPS)
+    // ---------------------------------------------
     if (ntp_auto_update && geo_lat != 0.0) {
         Serial.println("Finding Time...");
         update_loader_msg("Syncing Time...");
         
+        WiFiClientSecure clientS; // Local Secure Client
+        clientS.setInsecure();    // Skip cert check
+        HTTPClient httpS;         // Local HTTP Client
+        
         String timeUrl = "https://www.timeapi.io/api/v1/time/current/coordinate?latitude=" + 
                          String(geo_lat, 4) + "&longitude=" + String(geo_lon, 4);
         
-        http_client_secure.setReuse(false);
-        if (http_client_secure.begin(wifi_client_secure, timeUrl)) {
-            int tCode = http_client_secure.GET();
+        httpS.setReuse(false);
+        if (httpS.begin(clientS, timeUrl)) {
+            int tCode = httpS.GET();
             if (tCode == 200) {
-                String response = http_client_secure.getString();
+                String response = httpS.getString();
                 JsonDocument docTime;
                 DeserializationError error = deserializeJson(docTime, response);
 
@@ -2665,24 +2675,29 @@ void fetch_weather_data() {
             } else {
                 Serial.printf("TimeAPI Error: %d\n", tCode);
             }
-            http_client_secure.end();
+            httpS.end(); // Close connection
         }
     }
 
     delay(50); 
 
-    // Step 3: Weather
+    // ---------------------------------------------
+    // 3. Weather (HTTP)
+    // ---------------------------------------------
     if (geo_lat != 0.0) {
-        Serial.printf("Fetching Weather for: %.4f, %.4f\n", geo_lat, geo_lon); // Debug Print
+        Serial.printf("Fetching Weather for: %.4f, %.4f\n", geo_lat, geo_lon);
         update_loader_msg("Updating Weather...");
+        
+        WiFiClient client; // Local instance
+        HTTPClient http;   // Local instance
         
         String url = "http://api.open-meteo.com/v1/forecast?latitude=" + String(geo_lat) + 
                      "&longitude=" + String(geo_lon) + "&current_weather=true";
         
-        if (http_client_insecure.begin(wifi_client_insecure, url)) {
-            int wCode = http_client_insecure.GET();
+        if (http.begin(client, url)) {
+            int wCode = http.GET();
             if (wCode == 200) {
-                String payload = http_client_insecure.getString();
+                String payload = http.getString();
                 JsonDocument docWeather;
                 JsonDocument filter;
                 filter["current_weather"]["temperature"] = true;
@@ -2706,7 +2721,7 @@ void fetch_weather_data() {
             } else {
                 Serial.printf("Weather Error: %d\n", wCode);
             }
-            http_client_insecure.end();
+            http.end();
         }
     }
     
