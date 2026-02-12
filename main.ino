@@ -19,8 +19,8 @@
 
 /* ================= CONFIG ================= */
 
-#define SWITCH_COUNT 9
 #define GRID_COLS 3
+#define MAX_BUTTONS 9
 
 #define LCD_BL_PIN 4
 #define GT911_ADDR 0x14 
@@ -45,7 +45,7 @@ struct SavedWifi {
     bool valid;
 };
 
-struct HaSwitch { const char* name; const char* topic_cmd; const char* topic_state; bool state; lv_obj_t* btn; lv_obj_t* label; };
+struct HaSwitch { lv_obj_t* btn; lv_obj_t* label; };
 
 /* ================= LOCATION CONFIG STRUCT ================= */
 struct SystemLocation {
@@ -70,6 +70,7 @@ lv_obj_t *status_batt_icon = NULL;
 
 // Screens
 lv_obj_t *screen_home;
+lv_obj_t *grid_container = NULL;
 lv_obj_t *screen_notifications;
 lv_obj_t *screen_power;
 lv_obj_t *screen_settings_menu; 
@@ -99,11 +100,6 @@ bool initial_weather_fetched = false;
 bool trigger_weather_update = false;
 
 SystemLocation sysLoc = { 0.0, 0.0, 0, "Initial", false, false };
-
-WiFiClient wifi_client_insecure;
-WiFiClientSecure wifi_client_secure;
-HTTPClient http_client_insecure;
-HTTPClient http_client_secure;
 
 typedef enum {
     WEATHER_CLEAR = 0,
@@ -222,23 +218,16 @@ PubSubClient mqtt(wifiClient);
 
 const char* monthNames[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
 
-HaSwitch switches[SWITCH_COUNT] = {
-  { "LIGHT", "ha/panel/light/set", "ha/panel/light/state", false, NULL, NULL },
-  { "FAN",   "ha/panel/fan/set",   "ha/panel/fan/state",   false, NULL, NULL },
-  { "AC",    "ha/panel/ac/set",    "ha/panel/ac/state",    false, NULL, NULL },
-  { "PLUG",  "ha/panel/plug/set",  "ha/panel/plug/state",  false, NULL, NULL },
-  { "TV",    "ha/panel/tv/set",    "ha/panel/tv/state",    false, NULL, NULL },
-  { "BED",   "ha/panel/bed/set",   "ha/panel/bed/state",   false, NULL, NULL },
-  { "LOCK",  "ha/panel/lock/set",  "ha/panel/lock/state",  false, NULL, NULL },
-  { "HEAT",  "ha/panel/heat/set",  "ha/panel/heat/state",  false, NULL, NULL },
-  { "ALL",   "ha/panel/all/set",   "ha/panel/all/state",   false, NULL, NULL }
+
+struct DynamicSwitch {
+    char name[16];      // Label (e.g., "Kitchen")
+    char entity_id[64]; // HA Entity (e.g., "light.kitchen_main")
+    char icon[8];       // Icon Symbol
+    bool state;
 };
 
-const char* icons[SWITCH_COUNT] = {
-  LV_SYMBOL_POWER, LV_SYMBOL_REFRESH, LV_SYMBOL_WARNING,
-  LV_SYMBOL_CHARGE, LV_SYMBOL_VIDEO, LV_SYMBOL_HOME,
-  LV_SYMBOL_WARNING, LV_SYMBOL_WARNING, LV_SYMBOL_OK
-};
+DynamicSwitch my_switches[MAX_BUTTONS];
+HaSwitch switches[MAX_BUTTONS];
 
 String get_weather_description(int code) {
     switch(code) {
@@ -575,6 +564,25 @@ void wipe_wifi_popup() {
     }
 }
 
+void reset_grid_to_defaults() {
+    Serial.println("--- RESETTING GRID CONFIGURATION ---");
+
+    prefs.begin("grid_cfg", false);
+    prefs.clear(); 
+    prefs.end();
+
+    for (int i = 0; i < MAX_BUTTONS; i++) {
+        snprintf(my_switches[i].name, 16, "Unset");
+        snprintf(my_switches[i].entity_id, 64, "none");
+        snprintf(my_switches[i].icon, 8, LV_SYMBOL_PLUS);
+        my_switches[i].state = false;
+    }
+    save_grid_config();
+
+    if (screen_home) create_switch_grid(screen_home);
+}
+
+
 void load_settings() {
   load_location_prefs();
   load_display_prefs();
@@ -608,6 +616,7 @@ void load_settings() {
   prefs.end();
   
   load_saved_networks();
+  load_grid_config();
 }
 
 void save_device_name(const char* new_name) {
@@ -688,8 +697,12 @@ void save_ha_settings(const char* h, const char* p_str, const char* u, const cha
               lv_label_set_text(lbl_ha_status, "Status: Connected");
               lv_obj_set_style_text_color(lbl_ha_status, lv_palette_main(LV_PALETTE_GREEN), 0);
           }
-          for(int i=0; i<SWITCH_COUNT; i++) mqtt.subscribe(switches[i].topic_state);
+
+          // Subscribe to the Config Topic!
+          mqtt.subscribe("ha/panel/config/set");
+          mqtt.subscribe("ha/panel/state/update");
           mqtt.subscribe(mqtt_topic_notify);
+          mqtt.publish("ha/panel/sync", "get_states");
       } else {
           mqtt_enabled = false; 
           if(sw_mqtt_enable) lv_obj_clear_state(sw_mqtt_enable, LV_STATE_CHECKED);
@@ -899,27 +912,81 @@ void refresh_notification_list() {
 /* ================= MQTT CALLBACKS ================= */
 
 void mqtt_callback(char* topic, byte* payload, unsigned int len) {
-  if (len > 512) return;
-  char p_buff[513];
-  memcpy(p_buff, payload, len);
-  p_buff[len] = '\0';
-  String msg = String(p_buff);
+    Serial.print("Message arrived [");
+    Serial.print(topic);
+    Serial.println("]");
 
-  Serial.printf("MQTT Rcv: [%s] Payload: [%s]\n", topic, p_buff);
-
-  for (int i = 0; i < SWITCH_COUNT; i++) {
-    if (strcmp(topic, switches[i].topic_state) == 0) {
-      switches[i].state = (msg == "ON");
-      if(switches[i].label) lv_label_set_text(switches[i].label, switches[i].state ? "ON" : "OFF");
-      if(switches[i].btn) {
-          lv_obj_set_style_bg_color(switches[i].btn,
-            switches[i].state ? lv_palette_main(LV_PALETTE_GREEN) : lv_palette_main(LV_PALETTE_RED), 0);
-      }
+    char* p_buff = (char*)malloc(len + 1);
+    if (p_buff == NULL) {
+        Serial.println("Error: Not enough memory for MQTT payload");
+        return;
     }
-  }
-  if (strcmp(topic, mqtt_topic_notify) == 0) {
-    if (msg.length() > 0) add_notification(msg);
-  } 
+    memcpy(p_buff, payload, len);
+    p_buff[len] = '\0';
+
+    // 1. HANDLE CONFIGURATION UPDATE
+    if (strcmp(topic, "ha/panel/config/set") == 0) {
+        show_loader("Updating Layout...");
+
+        JsonDocument doc;
+        DeserializationError error = deserializeJson(doc, p_buff);
+        
+        if (!error) {
+            JsonArray buttons = doc["buttons"];
+            for (int i = 0; i < buttons.size(); i++) {
+                if (i >= MAX_BUTTONS) break;
+                
+                const char* n = buttons[i]["name"];
+                const char* e = buttons[i]["entity"];
+                const char* ic = buttons[i]["icon"];
+                
+                strncpy(my_switches[i].name, n, 15);
+                strncpy(my_switches[i].entity_id, e, 63);
+                
+                if(strcmp(ic, "light") == 0) strncpy(my_switches[i].icon, LV_SYMBOL_BELL, 7);
+                else if(strcmp(ic, "fan") == 0) strncpy(my_switches[i].icon, LV_SYMBOL_REFRESH, 7);
+                else strncpy(my_switches[i].icon, LV_SYMBOL_POWER, 7);
+            }
+            save_grid_config(); 
+            Serial.println("Config updated. Refreshing UI...");
+            create_switch_grid(screen_home); 
+            if (mqtt.connected()) {
+                 mqtt.publish("ha/panel/sync", "get_states");
+            }
+        } else {
+             Serial.print("JSON Error: ");
+             Serial.println(error.c_str());
+        }
+        hide_loader();
+    }
+
+    // 2. HANDLE STATE UPDATES FROM HA
+    if (strcmp(topic, "ha/panel/state/update") == 0) {
+        JsonDocument doc;
+        DeserializationError error = deserializeJson(doc, p_buff);
+        
+        if (!error) {
+            const char* id = doc["entity_id"];
+            const char* st = doc["state"];
+            
+            bool isOn = (strcasecmp(st, "on") == 0) || (strcasecmp(st, "open") == 0);
+
+            for (int i = 0; i < MAX_BUTTONS; i++) {
+                if (strcmp(my_switches[i].entity_id, id) == 0) {
+                    set_button_state_visual(i, isOn);
+                    break; 
+                }
+            }
+        }
+    }
+
+    // 3. HANDLE NOTIFICATIONS
+    if (strcmp(topic, mqtt_topic_notify) == 0) {
+        String msg = String(p_buff);
+        if (msg.length() > 0) add_notification(msg);
+    }
+
+    free(p_buff);
 }
 
 /* ================= UI CALLBACKS ================= */
@@ -1258,6 +1325,11 @@ void btn_save_ha_cb(lv_event_t * e) {
     lv_obj_add_flag(kb_ha, LV_OBJ_FLAG_HIDDEN);
 }
 
+void btn_reset_grid_cb(lv_event_t * e) {
+    reset_grid_to_defaults();    
+    show_notification_popup("Layout Reset to Defaults!", -1);
+}
+
 void ta_event_cb(lv_event_t * e) {
   lv_event_code_t code = lv_event_get_code(e);
   lv_obj_t * ta = (lv_obj_t *)lv_event_get_target(e);
@@ -1276,13 +1348,23 @@ void ta_event_cb(lv_event_t * e) {
 }
 
 void switch_event_cb(lv_event_t *e) {
-  lv_indev_t *indev = lv_indev_active();
-  if (lv_indev_get_gesture_dir(indev) != LV_DIR_NONE) return;
-  HaSwitch* sw = (HaSwitch*)lv_event_get_user_data(e);
-  sw->state = !sw->state;
-  if (mqtt.connected()) mqtt.publish(sw->topic_cmd, sw->state ? "ON" : "OFF");
-  lv_label_set_text(sw->label, sw->state ? "ON" : "OFF");
-  lv_obj_set_style_bg_color(sw->btn, sw->state ? lv_palette_main(LV_PALETTE_GREEN) : lv_palette_main(LV_PALETTE_RED), 0);
+    int idx = (intptr_t)lv_event_get_user_data(e);
+    
+    // 1. Toggle Visual Immediately (Optimistic UI)
+    bool newState = !my_switches[idx].state;
+    set_button_state_visual(idx, newState);
+    
+    // 2. Send Command to HA
+    JsonDocument doc;
+    doc["entity_id"] = my_switches[idx].entity_id;
+    doc["action"] = "toggle"; 
+    
+    char buffer[128];
+    serializeJson(doc, buffer);
+    
+    if (mqtt.connected()) {
+        mqtt.publish("ha/panel/command", buffer);
+    }
 }
 
 void settings_menu_event_cb(lv_event_t *e) {
@@ -1755,10 +1837,20 @@ void create_ha_screen(lv_obj_t *parent) {
     lv_label_set_text(lbl_ha_status, "Status: Not Connected");
     lv_obj_set_style_text_color(lbl_ha_status, lv_palette_darken(LV_PALETTE_GREY, 2), 0);
     lv_obj_align(lbl_ha_status, LV_ALIGN_TOP_LEFT, 10, 165); 
+    
+    lv_obj_t *btn_reset = lv_btn_create(cont_ha_inputs);
+    lv_obj_set_size(btn_reset, 140, 45);
+    lv_obj_align(btn_reset, LV_ALIGN_BOTTOM_LEFT, 40, -10);
+    lv_obj_set_style_bg_color(btn_reset, lv_palette_main(LV_PALETTE_RED), 0);
+    lv_obj_add_event_cb(btn_reset, btn_reset_grid_cb, LV_EVENT_CLICKED, NULL);
+
+    lv_obj_t *lbl_reset = lv_label_create(btn_reset);
+    lv_label_set_text(lbl_reset, "Reset Layout");
+    lv_obj_center(lbl_reset);
 
     lv_obj_t *btn_save = lv_btn_create(cont_ha_inputs);
     lv_obj_set_size(btn_save, 140, 45);
-    lv_obj_align(btn_save, LV_ALIGN_BOTTOM_MID, 0, -10);
+    lv_obj_align(btn_save, LV_ALIGN_BOTTOM_RIGHT, -40, -10);
     lv_obj_set_style_bg_color(btn_save, lv_palette_main(LV_PALETTE_GREEN), 0);
     lv_obj_add_event_cb(btn_save, btn_save_ha_cb, LV_EVENT_CLICKED, NULL);
     
@@ -1963,29 +2055,85 @@ void create_settings_menu_screen(lv_obj_t *parent) {
     add_settings_item(LV_SYMBOL_FILE, "  About Device", 1);
 }
 
+void set_button_state_visual(int index, bool is_on) {
+    if (index < 0 || index >= MAX_BUTTONS) return;
+    if (!switches[index].btn || !switches[index].label) return;
+
+    // Update internal state
+    my_switches[index].state = is_on;
+
+    if (is_on) {
+        // Active State: Orange Background, White Text
+        lv_obj_set_style_bg_color(switches[index].btn, lv_palette_main(LV_PALETTE_ORANGE), 0);
+        lv_label_set_text(switches[index].label, "ON");
+        lv_obj_set_style_text_color(switches[index].label, lv_color_white(), 0);
+        
+        // Optional: Make icon white too
+        lv_obj_t* icon_label = lv_obj_get_child(switches[index].btn, 0); 
+        if(icon_label) lv_obj_set_style_text_color(icon_label, lv_color_white(), 0);
+        
+    } else {
+        // Inactive State: Grey Background, Black Text
+        lv_obj_set_style_bg_color(switches[index].btn, lv_palette_lighten(LV_PALETTE_GREY, 4), 0);
+        lv_label_set_text(switches[index].label, "OFF");
+        lv_obj_set_style_text_color(switches[index].label, lv_color_black(), 0);
+        
+        // Restore icon color
+        lv_obj_t* icon_label = lv_obj_get_child(switches[index].btn, 0);
+        if(icon_label) lv_obj_set_style_text_color(icon_label, lv_color_black(), 0);
+    }
+}
 
 void create_switch_grid(lv_obj_t *parent) {
-  static lv_coord_t col_dsc[] = { LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST };
-  static lv_coord_t row_dsc[] = { LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST };
+    // 1. Prepare the Grid Container
+    if (grid_container != NULL) {
+        // If it exists, just remove all old buttons to redraw
+        lv_obj_clean(grid_container);
+    } else {
+        // If it doesn't exist, create it from scratch
+        static lv_coord_t col_dsc[] = { LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST };
+        static lv_coord_t row_dsc[] = { LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST };
 
-  lv_obj_t *grid = lv_obj_create(parent);
-  lv_obj_set_size(grid, 420, 360);
-  lv_obj_align(grid, LV_ALIGN_BOTTOM_MID, 0, -30);
-  
-  lv_obj_set_style_bg_opa(grid, LV_OPA_TRANSP, 0);
-  lv_obj_set_style_border_width(grid, 0, 0);
-  lv_obj_set_style_pad_all(grid, 0, 0);
-  lv_obj_clear_flag(grid, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_grid_dsc_array(grid, col_dsc, row_dsc);
+        grid_container = lv_obj_create(parent);
+        lv_obj_set_size(grid_container, 420, 360);
+        lv_obj_align(grid_container, LV_ALIGN_BOTTOM_MID, 0, -30);
+        
+        lv_obj_set_style_bg_opa(grid_container, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_border_width(grid_container, 0, 0);
+        lv_obj_set_style_pad_all(grid_container, 0, 0);
+        lv_obj_clear_flag(grid_container, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_set_grid_dsc_array(grid_container, col_dsc, row_dsc);
+    }
 
-  for (int i = 0; i < SWITCH_COUNT; i++) {
-    switches[i].btn = lv_btn_create(grid);
-    lv_obj_set_grid_cell(switches[i].btn, LV_GRID_ALIGN_STRETCH, i % GRID_COLS, 1, LV_GRID_ALIGN_STRETCH, i / GRID_COLS, 1);
-    lv_obj_add_event_cb(switches[i].btn, switch_event_cb, LV_EVENT_CLICKED, &switches[i]);
-    lv_obj_t *icon = lv_label_create(switches[i].btn); lv_label_set_text(icon, icons[i]); lv_obj_align(icon, LV_ALIGN_TOP_MID, 0, 8);
-    lv_obj_t *name = lv_label_create(switches[i].btn); lv_label_set_text(name, switches[i].name); lv_obj_align(name, LV_ALIGN_CENTER, 0, 10);
-    switches[i].label = lv_label_create(switches[i].btn); lv_label_set_text(switches[i].label, "OFF"); lv_obj_align(switches[i].label, LV_ALIGN_BOTTOM_MID, 0, -6);
-  }
+    // 2. Add the Buttons (using your new my_switches logic)
+    for (int i = 0; i < MAX_BUTTONS; i++) {
+        lv_obj_t *btn = lv_btn_create(grid_container); // Parent is grid_container!
+        lv_obj_set_grid_cell(btn, LV_GRID_ALIGN_STRETCH, i % GRID_COLS, 1, LV_GRID_ALIGN_STRETCH, i / GRID_COLS, 1);
+        
+        // Pass index for event handling
+        lv_obj_add_event_cb(btn, switch_event_cb, LV_EVENT_CLICKED, (void*)(intptr_t)i);
+        
+        // Icon
+        lv_obj_t *icon = lv_label_create(btn); 
+        const char* icon_symbol = (strlen(my_switches[i].icon) > 0) ? my_switches[i].icon : LV_SYMBOL_PLUS;
+        lv_label_set_text(icon, icon_symbol); 
+        lv_obj_align(icon, LV_ALIGN_TOP_MID, 0, 8);
+        
+        // Name
+        lv_obj_t *name = lv_label_create(btn); 
+        const char* label_text = (strlen(my_switches[i].name) > 0) ? my_switches[i].name : "Unset";
+        lv_label_set_text(name, label_text); 
+        lv_obj_align(name, LV_ALIGN_CENTER, 0, 10);
+        
+        // State Label
+        lv_obj_t *label = lv_label_create(btn); 
+        lv_label_set_text(label, "OFF"); 
+        lv_obj_align(label, LV_ALIGN_BOTTOM_MID, 0, -6);
+        
+        // Store pointers if you want to update them later
+        switches[i].btn = btn;
+        switches[i].label = label;
+    }
 }
 
 /* ================= TIME & DATE SCREEN ================= */
@@ -2193,8 +2341,8 @@ void perform_geocoding_search(const char* query) {
 
     show_loader("Searching City...");
     
-    HTTPClient http;
     WiFiClient client;
+    HTTPClient http;
     
     String q = String(query);
     q.replace(" ", "+");
@@ -2519,23 +2667,27 @@ void fetch_weather_data() {
         return;
     }
     show_loader("Resolving Location...");
-
-    wifi_client_secure.setInsecure();
     delay(50); 
 
     geo_lat = sysLoc.lat;
     geo_lon = sysLoc.lon;
     city_name = String(sysLoc.city);
 
+    // ---------------------------------------------
+    // 1. IP Geolocation (HTTP)
+    // ---------------------------------------------
     if (!sysLoc.is_manual) {
         Serial.println("Finding IP Geolocation...");
         update_loader_msg("Finding IP Location...");
         
-        http_client_insecure.setReuse(false);
-        if (http_client_insecure.begin(wifi_client_insecure, "http://ip-api.com/json/?fields=status,lat,lon,city")) {
-            int httpCode = http_client_insecure.GET();
+        WiFiClient client;  // Local instance
+        HTTPClient http;    // Local instance
+        
+        http.setReuse(false);
+        if (http.begin(client, "http://ip-api.com/json/?fields=status,lat,lon,city")) {
+            int httpCode = http.GET();
             if (httpCode == 200) {
-                String payload = http_client_insecure.getString();
+                String payload = http.getString();
                 JsonDocument docLoc;
                 deserializeJson(docLoc, payload);
 
@@ -2551,32 +2703,38 @@ void fetch_weather_data() {
                         sysLoc.city[31] = '\0';
                     }
                     city_name = String(sysLoc.city);
-
                     if (ui_uiLabelCity) lv_label_set_text(ui_uiLabelCity, sysLoc.city);
                     Serial.printf("IP Loc Found: %s (%.4f, %.4f)\n", sysLoc.city, geo_lat, geo_lon);
                 }
             } else {
                 Serial.printf("IP-API Error: %d. Using saved coords.\n", httpCode);
             }
-            http_client_insecure.end();
+            http.end(); // Important: Close connection
         }
     } else {
         Serial.println("Using Manual Location...");
         if (ui_uiLabelCity) lv_label_set_text(ui_uiLabelCity, sysLoc.city);
     }
 
+    // ---------------------------------------------
+    // 2. Time Sync (HTTPS)
+    // ---------------------------------------------
     if (ntp_auto_update && geo_lat != 0.0) {
         Serial.println("Finding Time...");
         update_loader_msg("Syncing Time...");
         
+        WiFiClientSecure clientS; // Local Secure Client
+        clientS.setInsecure();    // Skip cert check
+        HTTPClient httpS;         // Local HTTP Client
+        
         String timeUrl = "https://www.timeapi.io/api/v1/time/current/coordinate?latitude=" + 
                          String(geo_lat, 4) + "&longitude=" + String(geo_lon, 4);
         
-        http_client_secure.setReuse(false);
-        if (http_client_secure.begin(wifi_client_secure, timeUrl)) {
-            int tCode = http_client_secure.GET();
+        httpS.setReuse(false);
+        if (httpS.begin(clientS, timeUrl)) {
+            int tCode = httpS.GET();
             if (tCode == 200) {
-                String response = http_client_secure.getString();
+                String response = httpS.getString();
                 JsonDocument docTime;
                 DeserializationError error = deserializeJson(docTime, response);
 
@@ -2601,24 +2759,29 @@ void fetch_weather_data() {
             } else {
                 Serial.printf("TimeAPI Error: %d\n", tCode);
             }
-            http_client_secure.end();
+            httpS.end(); // Close connection
         }
     }
 
     delay(50); 
 
-    // Step 3: Weather
+    // ---------------------------------------------
+    // 3. Weather (HTTP)
+    // ---------------------------------------------
     if (geo_lat != 0.0) {
-        Serial.printf("Fetching Weather for: %.4f, %.4f\n", geo_lat, geo_lon); // Debug Print
+        Serial.printf("Fetching Weather for: %.4f, %.4f\n", geo_lat, geo_lon);
         update_loader_msg("Updating Weather...");
+        
+        WiFiClient client; // Local instance
+        HTTPClient http;   // Local instance
         
         String url = "http://api.open-meteo.com/v1/forecast?latitude=" + String(geo_lat) + 
                      "&longitude=" + String(geo_lon) + "&current_weather=true";
         
-        if (http_client_insecure.begin(wifi_client_insecure, url)) {
-            int wCode = http_client_insecure.GET();
+        if (http.begin(client, url)) {
+            int wCode = http.GET();
             if (wCode == 200) {
-                String payload = http_client_insecure.getString();
+                String payload = http.getString();
                 JsonDocument docWeather;
                 JsonDocument filter;
                 filter["current_weather"]["temperature"] = true;
@@ -2642,7 +2805,7 @@ void fetch_weather_data() {
             } else {
                 Serial.printf("Weather Error: %d\n", wCode);
             }
-            http_client_insecure.end();
+            http.end();
         }
     }
     
@@ -2753,6 +2916,43 @@ void update_loader_msg(const char* msg) {
         lv_timer_handler();
     }
 }
+
+/* ================= HA PANNEL ================= */
+
+// 1. New Helper to Save Config to Flash (Preferences)
+void save_grid_config() {
+    prefs.begin("grid_cfg", false);
+    for (int i = 0; i < MAX_BUTTONS; i++) {
+        String key = "btn_" + String(i);
+        // Save as pipe-separated string: "Kitchen|light.kitchen|ð"
+        String val = String(my_switches[i].name) + "|" + String(my_switches[i].entity_id) + "|" + String(my_switches[i].icon);
+        prefs.putString(key.c_str(), val);
+    }
+    prefs.end();
+}
+
+// 2. New Helper to Load Config on Boot
+void load_grid_config() {
+    prefs.begin("grid_cfg", true);
+    for (int i = 0; i < MAX_BUTTONS; i++) {
+        String val = prefs.getString(("btn_" + String(i)).c_str(), "Unset|none|" LV_SYMBOL_PLUS);
+        
+        // Simple parser
+        int firstPipe = val.indexOf('|');
+        int lastPipe = val.lastIndexOf('|');
+        
+        String n = val.substring(0, firstPipe);
+        String e = val.substring(firstPipe + 1, lastPipe);
+        String ic = val.substring(lastPipe + 1);
+        
+        strncpy(my_switches[i].name, n.c_str(), 15);
+        strncpy(my_switches[i].entity_id, e.c_str(), 63);
+        strncpy(my_switches[i].icon, ic.c_str(), 7);
+        my_switches[i].state = false;
+    }
+    prefs.end();
+}
+
 
 /* ================= SETUP & LOOP ================= */
 
@@ -2881,6 +3081,8 @@ void setup() {
     if (strlen(mqtt_host) > 0 && mqtt_port > 0) {
         mqtt.setServer(mqtt_host, mqtt_port);
         mqtt.setCallback(mqtt_callback);
+
+        mqtt.setBufferSize(4096);
     }
     mqtt_retry_count = 0; 
     last_touch_ms = millis();
@@ -3219,9 +3421,17 @@ void handle_mqtt_loop() {
                     
                     if(connected) {
                         Serial.println("MQTT Success!");
-                        mqtt_retry_count = 0; 
-                        for(int i=0; i<SWITCH_COUNT; i++) mqtt.subscribe(switches[i].topic_state);
+                        mqtt_retry_count = 0;
+
+                        show_loader("Syncing States...");
+
+                        mqtt.subscribe("ha/panel/config/set");
+                        mqtt.subscribe("ha/panel/state/update");
                         mqtt.subscribe(mqtt_topic_notify);
+
+                        mqtt.publish("ha/panel/sync", "get_states");
+                        delay(500);
+                        hide_loader();
                     }
                 }
             }
