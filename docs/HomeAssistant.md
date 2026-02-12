@@ -87,6 +87,39 @@ action:
         }
 ```
 
+### Automation C. The Boot Sync (Panel Requests States)
+
+Ensures the panel gets the correct color/state immediately after a reboot.
+
+```yaml
+alias: "ESP32 Panel Sync"
+description: "Sends current states of all devices when panel boots up"
+mode: queued
+trigger:
+  - platform: mqtt
+    topic: "ha/panel/sync"
+action:
+  # Loop through your entities and send their current state
+  - repeat:
+      for_each:
+        - light.kitchen_main
+        - cover.garage_door
+        - climate.living_room
+        - scene.movie_night
+        - light.dining_table
+        - switch.smart_plug
+        # Add all your panel entities here
+      sequence:
+        - service: mqtt.publish
+          data:
+            topic: "ha/panel/state/update"
+            payload: |
+              {
+                "entity_id": "{{ repeat.item }}",
+                "state": "{{ states(repeat.item) }}"
+              }
+```
+
 ### Step 3: Sending Notifications (Optional)
 
 To send a popup notification to the panel, simply publish to the notify topic.
