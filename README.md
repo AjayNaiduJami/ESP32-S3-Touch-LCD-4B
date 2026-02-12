@@ -4,13 +4,18 @@ A feature-rich, touch-screen Smart Home Control Panel built for the **Waveshare 
 
 **Please note:** some are work in progress **(WIP)**
 
+## 📚 Documentation
+
+Additional documentation is available in the [`docs/`](docs/) directory.
+- Home Assistant configuration guide: [`HomeAssistant.md`](docs/HomeAssistant.md)
+
 ## 🌟 Features
 
 ### 🏠 Smart Home Control (MQTT)
 
-* **Grid Control:** 9 dedicated switch buttons for common devices (Light, Fan, AC, Plug, TV, Bed, Lock, Heater, All). **(WIP)**
-* **Bi-Directional Sync:** Updates UI state based on incoming MQTT messages and publishes commands immediately on touch. **(WIP)**
-* **Customizable Topics:** MQTT Host, Port, Credentials, and Notification topics are fully configurable via the on-device Settings menu. **(WIP)**
+* **Grid Control:** 9 dedicated switch buttons for common switches (Light, Fan, AC, Plug, TV, Bed, Lock, Heater, All).
+* **Bi-Directional Sync:** Updates UI state based on incoming MQTT messages and publishes commands immediately on touch.
+* **Customizable Topics:** MQTT Host, Port, Credentials, and Notification topics are fully configurable via the on-device Settings menu.
 
 ### 🌤️ Weather & Location
 
