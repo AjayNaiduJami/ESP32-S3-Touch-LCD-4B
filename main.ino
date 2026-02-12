@@ -920,8 +920,8 @@ void mqtt_callback(char* topic, byte* payload, unsigned int len) {
     Serial.print(topic);
     Serial.println("]");
 
-    char p_buff[2048]; // Increase buffer for large JSON
-    if (len >= 2048) len = 2047;
+    char p_buff[4097]; 
+    if (len >= 4097) len = 4096;
     memcpy(p_buff, payload, len);
     p_buff[len] = '\0';
 
@@ -3010,6 +3010,8 @@ void setup() {
     if (strlen(mqtt_host) > 0 && mqtt_port > 0) {
         mqtt.setServer(mqtt_host, mqtt_port);
         mqtt.setCallback(mqtt_callback);
+
+        mqtt.setBufferSize(4096);
     }
     mqtt_retry_count = 0; 
     last_touch_ms = millis();
