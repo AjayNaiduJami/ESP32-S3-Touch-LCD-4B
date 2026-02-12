@@ -725,6 +725,7 @@ void save_ha_settings(const char* h, const char* p_str, const char* u, const cha
           for(int i=0; i<MAX_BUTTONS; i++) mqtt.subscribe(switches[i].topic_state);
           mqtt.subscribe("ha/panel/state/update");
           mqtt.subscribe(mqtt_topic_notify);
+          mqtt.publish("ha/panel/sync", "get_states");
       } else {
           mqtt_enabled = false; 
           if(sw_mqtt_enable) lv_obj_clear_state(sw_mqtt_enable, LV_STATE_CHECKED);
@@ -2145,6 +2146,10 @@ void create_switch_grid(lv_obj_t *parent) {
         // Store pointers if you want to update them later
         switches[i].btn = btn;
         switches[i].label = label;
+    }
+    if (mqtt.connected()) {
+        Serial.println("Requesting state sync from HA...");
+        mqtt.publish("ha/panel/sync", "get_states");
     }
 }
 

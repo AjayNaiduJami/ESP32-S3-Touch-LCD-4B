@@ -7,6 +7,7 @@ A feature-rich, touch-screen Smart Home Control Panel built for the **Waveshare 
 ## 📚 Documentation
 
 Additional documentation is available in the [`docs/`](docs/) directory.
+- Settings guide: [`Settings.md`](docs/Settings.md)
 - Home Assistant configuration guide: [`HomeAssistant.md`](docs/HomeAssistant.md)
 
 ## 🌟 Features
@@ -154,32 +155,6 @@ otadata,  data, ota,     0xe000,  0x2000,
 app0,     app,  ota_0,   0x10000, 0xA00000,
 spiffs,   data, spiffs,  0xA10000,0x5F0000,
 ```
-
-### 🔗 MQTT Configuration (Home Assistant)
-
-To integrate this panel with Home Assistant, add the following configuration to your `configuration.yaml` (or create Helpers) corresponding to the topics defined in the code.
-
-**Payloads:** `ON` / `OFF`
-
-| Switch Name | Command Topic (Set) | State Topic (Listen) |
-| --- | --- | --- |
-| **LIGHT** | `ha/panel/light/set` | `ha/panel/light/state` |
-| **FAN** | `ha/panel/fan/set` | `ha/panel/fan/state` |
-| **AC** | `ha/panel/ac/set` | `ha/panel/ac/state` |
-| **PLUG** | `ha/panel/plug/set` | `ha/panel/plug/state` |
-| **TV** | `ha/panel/tv/set` | `ha/panel/tv/state` |
-| **BED** | `ha/panel/bed/set` | `ha/panel/bed/state` |
-| **LOCK** | `ha/panel/lock/set` | `ha/panel/lock/state` |
-| **HEAT** | `ha/panel/heat/set` | `ha/panel/heat/state` |
-| **ALL** | `ha/panel/all/set` | `ha/panel/all/state` |
-
-### Sending Notifications
-
-To send a notification to the panel from Home Assistant, publish a message to the configured notification topic (Default: `ha/panel/notify`).
-
-* **Topic:** `ha/panel/notify`
-* **Payload:** `Front Door is Open`
-
 ---
 ### 🔍 Troubleshooting
 - **Screen is black but code is running:** Ensure PSRAM is set to OPI PSRAM. The 480x480 frame buffer requires OPI PSRAM to initialize the RGB interface.
