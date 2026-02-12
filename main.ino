@@ -705,7 +705,7 @@ void save_ha_settings(const char* h, const char* p_str, const char* u, const cha
           // Subscribe to the Config Topic!
           mqtt.subscribe("ha/panel/config/set");
           for(int i=0; i<SWITCH_COUNT; i++) mqtt.subscribe(switches[i].topic_state);
-
+          mqtt.subscribe("ha/panel/state/update");
           mqtt.subscribe(mqtt_topic_notify);
       } else {
           mqtt_enabled = false; 
@@ -952,6 +952,28 @@ void mqtt_callback(char* topic, byte* payload, unsigned int len) {
             Serial.println("Config updated. Refreshing UI...");
             create_switch_grid(screen_home); // Redraw buttons dynamically!
             // ESP.restart(); // DELETE THIS LINE
+        }
+    }
+
+    // 2. NEW: HANDLE STATE UPDATES FROM HA
+    if (strcmp(topic, "ha/panel/state/update") == 0) {
+        JsonDocument doc;
+        DeserializationError error = deserializeJson(doc, p_buff);
+        
+        if (!error) {
+            const char* id = doc["entity_id"];
+            const char* st = doc["state"];
+            
+            // Check if state is 'on' or 'open' (for covers)
+            bool isOn = (strcasecmp(st, "on") == 0) || (strcasecmp(st, "open") == 0);
+
+            // Find which button matches this entity
+            for (int i = 0; i < MAX_BUTTONS; i++) {
+                if (strcmp(my_switches[i].entity_id, id) == 0) {
+                    set_button_state_visual(i, isOn);
+                    break; // Stop looking once found
+                }
+            }
         }
     }
 
@@ -1315,13 +1337,13 @@ void ta_event_cb(lv_event_t * e) {
 }
 
 void switch_event_cb(lv_event_t *e) {
-    // Get the index passed from create_switch_grid
     int idx = (intptr_t)lv_event_get_user_data(e);
     
-    // Toggle State Visual
-    my_switches[idx].state = !my_switches[idx].state;
+    // 1. Toggle Visual Immediately (Optimistic UI)
+    bool newState = !my_switches[idx].state;
+    set_button_state_visual(idx, newState);
     
-    // Send Universal Command
+    // 2. Send Command to HA
     JsonDocument doc;
     doc["entity_id"] = my_switches[idx].entity_id;
     doc["action"] = "toggle"; 
@@ -2012,6 +2034,34 @@ void create_settings_menu_screen(lv_obj_t *parent) {
     add_settings_item(LV_SYMBOL_FILE, "  About Device", 1);
 }
 
+void set_button_state_visual(int index, bool is_on) {
+    if (index < 0 || index >= MAX_BUTTONS) return;
+    if (!switches[index].btn || !switches[index].label) return;
+
+    // Update internal state
+    my_switches[index].state = is_on;
+
+    if (is_on) {
+        // Active State: Orange Background, White Text
+        lv_obj_set_style_bg_color(switches[index].btn, lv_palette_main(LV_PALETTE_ORANGE), 0);
+        lv_label_set_text(switches[index].label, "ON");
+        lv_obj_set_style_text_color(switches[index].label, lv_color_white(), 0);
+        
+        // Optional: Make icon white too
+        lv_obj_t* icon_label = lv_obj_get_child(switches[index].btn, 0); 
+        if(icon_label) lv_obj_set_style_text_color(icon_label, lv_color_white(), 0);
+        
+    } else {
+        // Inactive State: Grey Background, Black Text
+        lv_obj_set_style_bg_color(switches[index].btn, lv_palette_lighten(LV_PALETTE_GREY, 4), 0);
+        lv_label_set_text(switches[index].label, "OFF");
+        lv_obj_set_style_text_color(switches[index].label, lv_color_black(), 0);
+        
+        // Restore icon color
+        lv_obj_t* icon_label = lv_obj_get_child(switches[index].btn, 0);
+        if(icon_label) lv_obj_set_style_text_color(icon_label, lv_color_black(), 0);
+    }
+}
 
 void create_switch_grid(lv_obj_t *parent) {
     // 1. Prepare the Grid Container
@@ -3354,6 +3404,7 @@ void handle_mqtt_loop() {
                         // Subscribe to the Config Topic!
                         mqtt.subscribe("ha/panel/config/set");
                         for(int i=0; i<SWITCH_COUNT; i++) mqtt.subscribe(switches[i].topic_state);
+                        mqtt.subscribe("ha/panel/state/update");
                         mqtt.subscribe(mqtt_topic_notify);
                     }
                 }
