@@ -21,6 +21,7 @@
 
 #define SWITCH_COUNT 9
 #define GRID_COLS 3
+#define MAX_BUTTONS 9
 
 #define LCD_BL_PIN 4
 #define GT911_ADDR 0x14 
@@ -221,6 +222,16 @@ WiFiClient wifiClient;
 PubSubClient mqtt(wifiClient);
 
 const char* monthNames[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+
+
+struct DynamicSwitch {
+    char name[16];      // Label (e.g., "Kitchen")
+    char entity_id[64]; // HA Entity (e.g., "light.kitchen_main")
+    char icon[8];       // Icon Symbol
+    bool state;
+};
+
+DynamicSwitch my_switches[MAX_BUTTONS];
 
 HaSwitch switches[SWITCH_COUNT] = {
   { "LIGHT", "ha/panel/light/set", "ha/panel/light/state", false, NULL, NULL },
@@ -899,27 +910,43 @@ void refresh_notification_list() {
 /* ================= MQTT CALLBACKS ================= */
 
 void mqtt_callback(char* topic, byte* payload, unsigned int len) {
-  if (len > 512) return;
-  char p_buff[513];
-  memcpy(p_buff, payload, len);
-  p_buff[len] = '\0';
-  String msg = String(p_buff);
+    char p_buff[2048]; // Increase buffer for large JSON
+    if (len >= 2048) len = 2047;
+    memcpy(p_buff, payload, len);
+    p_buff[len] = '\0';
 
-  Serial.printf("MQTT Rcv: [%s] Payload: [%s]\n", topic, p_buff);
-
-  for (int i = 0; i < SWITCH_COUNT; i++) {
-    if (strcmp(topic, switches[i].topic_state) == 0) {
-      switches[i].state = (msg == "ON");
-      if(switches[i].label) lv_label_set_text(switches[i].label, switches[i].state ? "ON" : "OFF");
-      if(switches[i].btn) {
-          lv_obj_set_style_bg_color(switches[i].btn,
-            switches[i].state ? lv_palette_main(LV_PALETTE_GREEN) : lv_palette_main(LV_PALETTE_RED), 0);
-      }
+    // 1. HANDLE CONFIGURATION UPDATE
+    if (strcmp(topic, "ha/panel/config/set") == 0) {
+        JsonDocument doc;
+        DeserializationError error = deserializeJson(doc, p_buff);
+        
+        if (!error) {
+            JsonArray buttons = doc["buttons"];
+            for (int i = 0; i < buttons.size(); i++) {
+                if (i >= MAX_BUTTONS) break;
+                
+                const char* n = buttons[i]["name"];
+                const char* e = buttons[i]["entity"];
+                const char* ic = buttons[i]["icon"]; // Send "light", "fan", "power" strings
+                
+                strncpy(my_switches[i].name, n, 15);
+                strncpy(my_switches[i].entity_id, e, 63);
+                
+                // Map text icon names to LVGL symbols
+                if(strcmp(ic, "light") == 0) strncpy(my_switches[i].icon, LV_SYMBOL_BELL, 7);
+                else if(strcmp(ic, "fan") == 0) strncpy(my_switches[i].icon, LV_SYMBOL_REFRESH, 7);
+                else strncpy(my_switches[i].icon, LV_SYMBOL_POWER, 7);
+            }
+            save_grid_config(); // Save to NVS
+            // TODO: Call function to redraw grid UI here
+            ESP.restart(); // Simple way to refresh UI for now
+        }
     }
-  }
-  if (strcmp(topic, mqtt_topic_notify) == 0) {
-    if (msg.length() > 0) add_notification(msg);
-  } 
+
+    if (strcmp(topic, mqtt_topic_notify) == 0) {
+        String msg = String(p_buff);
+        if (msg.length() > 0) add_notification(msg);
+    }
 }
 
 /* ================= UI CALLBACKS ================= */
@@ -1276,13 +1303,25 @@ void ta_event_cb(lv_event_t * e) {
 }
 
 void switch_event_cb(lv_event_t *e) {
-  lv_indev_t *indev = lv_indev_active();
-  if (lv_indev_get_gesture_dir(indev) != LV_DIR_NONE) return;
-  HaSwitch* sw = (HaSwitch*)lv_event_get_user_data(e);
-  sw->state = !sw->state;
-  if (mqtt.connected()) mqtt.publish(sw->topic_cmd, sw->state ? "ON" : "OFF");
-  lv_label_set_text(sw->label, sw->state ? "ON" : "OFF");
-  lv_obj_set_style_bg_color(sw->btn, sw->state ? lv_palette_main(LV_PALETTE_GREEN) : lv_palette_main(LV_PALETTE_RED), 0);
+    int idx = (intptr_t)lv_event_get_user_data(e);
+    
+    // Toggle State Visual
+    my_switches[idx].state = !my_switches[idx].state;
+    
+    // Send Universal Command
+    // Topic: ha/panel/command
+    // Payload: {"entity_id": "light.kitchen", "action": "toggle"}
+    
+    JsonDocument doc;
+    doc["entity_id"] = my_switches[idx].entity_id;
+    doc["action"] = "toggle"; // Or "turn_on" / "turn_off"
+    
+    char buffer[128];
+    serializeJson(doc, buffer);
+    
+    if (mqtt.connected()) {
+        mqtt.publish("ha/panel/command", buffer);
+    }
 }
 
 void settings_menu_event_cb(lv_event_t *e) {
@@ -2753,6 +2792,43 @@ void update_loader_msg(const char* msg) {
         lv_timer_handler();
     }
 }
+
+/* ================= HA PANNEL ================= */
+
+// 1. New Helper to Save Config to Flash (Preferences)
+void save_grid_config() {
+    prefs.begin("grid_cfg", false);
+    for (int i = 0; i < MAX_BUTTONS; i++) {
+        String key = "btn_" + String(i);
+        // Save as pipe-separated string: "Kitchen|light.kitchen|ð"
+        String val = String(my_switches[i].name) + "|" + String(my_switches[i].entity_id) + "|" + String(my_switches[i].icon);
+        prefs.putString(key.c_str(), val);
+    }
+    prefs.end();
+}
+
+// 2. New Helper to Load Config on Boot
+void load_grid_config() {
+    prefs.begin("grid_cfg", true);
+    for (int i = 0; i < MAX_BUTTONS; i++) {
+        String val = prefs.getString(("btn_" + String(i)).c_str(), "Unset|none|" LV_SYMBOL_PLUS);
+        
+        // Simple parser
+        int firstPipe = val.indexOf('|');
+        int lastPipe = val.lastIndexOf('|');
+        
+        String n = val.substring(0, firstPipe);
+        String e = val.substring(firstPipe + 1, lastPipe);
+        String ic = val.substring(lastPipe + 1);
+        
+        strncpy(my_switches[i].name, n.c_str(), 15);
+        strncpy(my_switches[i].entity_id, e.c_str(), 63);
+        strncpy(my_switches[i].icon, ic.c_str(), 7);
+        my_switches[i].state = false;
+    }
+    prefs.end();
+}
+
 
 /* ================= SETUP & LOOP ================= */
 
