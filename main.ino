@@ -939,8 +939,11 @@ void mqtt_callback(char* topic, byte* payload, unsigned int len) {
     Serial.print(topic);
     Serial.println("]");
 
-    char p_buff[4097]; 
-    if (len >= 4097) len = 4096;
+    char* p_buff = (char*)malloc(len + 1);
+    if (p_buff == NULL) {
+        Serial.println("Error: Not enough memory for MQTT payload");
+        return;
+    }
     memcpy(p_buff, payload, len);
     p_buff[len] = '\0';
 
@@ -973,11 +976,14 @@ void mqtt_callback(char* topic, byte* payload, unsigned int len) {
             if (mqtt.connected()) {
                  mqtt.publish("ha/panel/sync", "get_states");
             }
+        } else {
+             Serial.print("JSON Error: ");
+             Serial.println(error.c_str());
         }
         hide_loader();
     }
 
-    // 2. NEW: HANDLE STATE UPDATES FROM HA
+    // 2. HANDLE STATE UPDATES FROM HA
     if (strcmp(topic, "ha/panel/state/update") == 0) {
         JsonDocument doc;
         DeserializationError error = deserializeJson(doc, p_buff);
@@ -986,23 +992,24 @@ void mqtt_callback(char* topic, byte* payload, unsigned int len) {
             const char* id = doc["entity_id"];
             const char* st = doc["state"];
             
-            // Check if state is 'on' or 'open' (for covers)
             bool isOn = (strcasecmp(st, "on") == 0) || (strcasecmp(st, "open") == 0);
 
-            // Find which button matches this entity
             for (int i = 0; i < MAX_BUTTONS; i++) {
                 if (strcmp(my_switches[i].entity_id, id) == 0) {
                     set_button_state_visual(i, isOn);
-                    break; // Stop looking once found
+                    break; 
                 }
             }
         }
     }
 
+    // 3. HANDLE NOTIFICATIONS
     if (strcmp(topic, mqtt_topic_notify) == 0) {
         String msg = String(p_buff);
         if (msg.length() > 0) add_notification(msg);
     }
+
+    free(p_buff);
 }
 
 /* ================= UI CALLBACKS ================= */
