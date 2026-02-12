@@ -110,10 +110,12 @@ This project requires specific driver libraries provided by Waveshare to functio
 3. Locate the `libraries` folder inside the unzipped directory.
 4. Copy the contents of that `libraries` folder into your Arduino libraries directory (Usually `Documents/Arduino/libraries`).
     - *This installs: `Arduino_GFX`, `XPowersLib`, `SensorLib` (QMI8658/PCF85063), and `lvgl` configured for this board.*
-5. **Additional Libraries:** If not included in the ZIP, install the following via the Arduino Library Manager:
+5. Replace the existing `lv_conf.h` file in your Arduino libraries directory with the one provided at [libraries/lv_conf.h](libraries/lv_conf.h) * **IMPORTANT** *
+
+6. **Additional Libraries:** If not included in the ZIP, install the following via the Arduino Library Manager:
     - `PubSubClient` by Nick O'Leary (v2.8)
     - `ArduinoJson` by Benoit Blanchon (v7.4.2)
-6. **Boards:** Install the following via the Arduino Boards Manager:
+7. **Boards:** Install the following via the Arduino Boards Manager:
     - `Arduino ESP32 Boards` by Arduino (v2.0.18-arduino.5)
     - `esp32` by Espressif Systems (v3.3.6)
 
