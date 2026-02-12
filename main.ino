@@ -700,7 +700,11 @@ void save_ha_settings(const char* h, const char* p_str, const char* u, const cha
               lv_label_set_text(lbl_ha_status, "Status: Connected");
               lv_obj_set_style_text_color(lbl_ha_status, lv_palette_main(LV_PALETTE_GREEN), 0);
           }
+
+          // Subscribe to the Config Topic!
+          mqtt.subscribe("ha/panel/config/set");
           for(int i=0; i<SWITCH_COUNT; i++) mqtt.subscribe(switches[i].topic_state);
+
           mqtt.subscribe(mqtt_topic_notify);
       } else {
           mqtt_enabled = false; 
@@ -911,6 +915,10 @@ void refresh_notification_list() {
 /* ================= MQTT CALLBACKS ================= */
 
 void mqtt_callback(char* topic, byte* payload, unsigned int len) {
+    Serial.print("Message arrived [");
+    Serial.print(topic);
+    Serial.println("]");
+    
     char p_buff[2048]; // Increase buffer for large JSON
     if (len >= 2048) len = 2047;
     memcpy(p_buff, payload, len);
@@ -3313,6 +3321,8 @@ void handle_mqtt_loop() {
                     if(connected) {
                         Serial.println("MQTT Success!");
                         mqtt_retry_count = 0; 
+                        // Subscribe to the Config Topic!
+                        mqtt.subscribe("ha/panel/config/set");
                         for(int i=0; i<SWITCH_COUNT; i++) mqtt.subscribe(switches[i].topic_state);
                         mqtt.subscribe(mqtt_topic_notify);
                     }
