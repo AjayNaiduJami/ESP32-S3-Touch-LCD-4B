@@ -71,6 +71,7 @@ lv_obj_t *status_batt_icon = NULL;
 
 // Screens
 lv_obj_t *screen_home;
+lv_obj_t *grid_container = NULL;
 lv_obj_t *screen_notifications;
 lv_obj_t *screen_power;
 lv_obj_t *screen_settings_menu; 
@@ -947,8 +948,10 @@ void mqtt_callback(char* topic, byte* payload, unsigned int len) {
                 else strncpy(my_switches[i].icon, LV_SYMBOL_POWER, 7);
             }
             save_grid_config(); // Save to NVS
-            // TODO: Call function to redraw grid UI here
-            ESP.restart(); // Simple way to refresh UI for now
+            // --- FIX IS HERE ---
+            Serial.println("Config updated. Refreshing UI...");
+            create_switch_grid(screen_home); // Redraw buttons dynamically!
+            // ESP.restart(); // DELETE THIS LINE
         }
     }
 
@@ -2011,45 +2014,55 @@ void create_settings_menu_screen(lv_obj_t *parent) {
 
 
 void create_switch_grid(lv_obj_t *parent) {
-  static lv_coord_t col_dsc[] = { LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST };
-  static lv_coord_t row_dsc[] = { LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST };
+    // 1. Prepare the Grid Container
+    if (grid_container != NULL) {
+        // If it exists, just remove all old buttons to redraw
+        lv_obj_clean(grid_container);
+    } else {
+        // If it doesn't exist, create it from scratch
+        static lv_coord_t col_dsc[] = { LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST };
+        static lv_coord_t row_dsc[] = { LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST };
 
-  lv_obj_t *grid = lv_obj_create(parent);
-  lv_obj_set_size(grid, 420, 360);
-  lv_obj_align(grid, LV_ALIGN_BOTTOM_MID, 0, -30);
-  
-  lv_obj_set_style_bg_opa(grid, LV_OPA_TRANSP, 0);
-  lv_obj_set_style_border_width(grid, 0, 0);
-  lv_obj_set_style_pad_all(grid, 0, 0);
-  lv_obj_clear_flag(grid, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_grid_dsc_array(grid, col_dsc, row_dsc);
+        grid_container = lv_obj_create(parent);
+        lv_obj_set_size(grid_container, 420, 360);
+        lv_obj_align(grid_container, LV_ALIGN_BOTTOM_MID, 0, -30);
+        
+        lv_obj_set_style_bg_opa(grid_container, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_border_width(grid_container, 0, 0);
+        lv_obj_set_style_pad_all(grid_container, 0, 0);
+        lv_obj_clear_flag(grid_container, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_set_grid_dsc_array(grid_container, col_dsc, row_dsc);
+    }
 
-  for (int i = 0; i < MAX_BUTTONS; i++) {
-    lv_obj_t *btn = lv_btn_create(grid);
-    lv_obj_set_grid_cell(btn, LV_GRID_ALIGN_STRETCH, i % GRID_COLS, 1, LV_GRID_ALIGN_STRETCH, i / GRID_COLS, 1);
-    
-    // IMPORTANT: Pass the integer index 'i' to the event handler
-    lv_obj_add_event_cb(btn, switch_event_cb, LV_EVENT_CLICKED, (void*)(intptr_t)i);
-    
-    // 1. Icon (from Dynamic Config)
-    lv_obj_t *icon = lv_label_create(btn); 
-    // Use the icon from my_switches, default to PLUS if empty
-    const char* icon_symbol = (strlen(my_switches[i].icon) > 0) ? my_switches[i].icon : LV_SYMBOL_PLUS;
-    lv_label_set_text(icon, icon_symbol); 
-    lv_obj_align(icon, LV_ALIGN_TOP_MID, 0, 8);
-    
-    // 2. Name (from Dynamic Config)
-    lv_obj_t *name = lv_label_create(btn); 
-    // Use name from my_switches, default to "Unset" if empty
-    const char* label_text = (strlen(my_switches[i].name) > 0) ? my_switches[i].name : "Unset";
-    lv_label_set_text(name, label_text); 
-    lv_obj_align(name, LV_ALIGN_CENTER, 0, 10);
-    
-    // 3. State Label
-    lv_obj_t *label = lv_label_create(btn); 
-    lv_label_set_text(label, "OFF"); 
-    lv_obj_align(label, LV_ALIGN_BOTTOM_MID, 0, -6);
-  }
+    // 2. Add the Buttons (using your new my_switches logic)
+    for (int i = 0; i < MAX_BUTTONS; i++) {
+        lv_obj_t *btn = lv_btn_create(grid_container); // Parent is grid_container!
+        lv_obj_set_grid_cell(btn, LV_GRID_ALIGN_STRETCH, i % GRID_COLS, 1, LV_GRID_ALIGN_STRETCH, i / GRID_COLS, 1);
+        
+        // Pass index for event handling
+        lv_obj_add_event_cb(btn, switch_event_cb, LV_EVENT_CLICKED, (void*)(intptr_t)i);
+        
+        // Icon
+        lv_obj_t *icon = lv_label_create(btn); 
+        const char* icon_symbol = (strlen(my_switches[i].icon) > 0) ? my_switches[i].icon : LV_SYMBOL_PLUS;
+        lv_label_set_text(icon, icon_symbol); 
+        lv_obj_align(icon, LV_ALIGN_TOP_MID, 0, 8);
+        
+        // Name
+        lv_obj_t *name = lv_label_create(btn); 
+        const char* label_text = (strlen(my_switches[i].name) > 0) ? my_switches[i].name : "Unset";
+        lv_label_set_text(name, label_text); 
+        lv_obj_align(name, LV_ALIGN_CENTER, 0, 10);
+        
+        // State Label
+        lv_obj_t *label = lv_label_create(btn); 
+        lv_label_set_text(label, "OFF"); 
+        lv_obj_align(label, LV_ALIGN_BOTTOM_MID, 0, -6);
+        
+        // Store pointers if you want to update them later
+        switches[i].btn = btn;
+        switches[i].label = label;
+    }
 }
 
 /* ================= TIME & DATE SCREEN ================= */
