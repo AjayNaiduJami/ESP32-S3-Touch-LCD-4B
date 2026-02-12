@@ -45,7 +45,7 @@ struct SavedWifi {
     bool valid;
 };
 
-struct HaSwitch { const char* name; const char* topic_cmd; const char* topic_state; bool state; lv_obj_t* btn; lv_obj_t* label; };
+struct HaSwitch { lv_obj_t* btn; lv_obj_t* label; };
 
 /* ================= LOCATION CONFIG STRUCT ================= */
 struct SystemLocation {
@@ -100,11 +100,6 @@ bool initial_weather_fetched = false;
 bool trigger_weather_update = false;
 
 SystemLocation sysLoc = { 0.0, 0.0, 0, "Initial", false, false };
-
-// WiFiClient wifi_client_insecure;
-// WiFiClientSecure wifi_client_secure;
-// HTTPClient http_client_insecure;
-// HTTPClient http_client_secure;
 
 typedef enum {
     WEATHER_CLEAR = 0,
@@ -232,24 +227,7 @@ struct DynamicSwitch {
 };
 
 DynamicSwitch my_switches[MAX_BUTTONS];
-
-HaSwitch switches[MAX_BUTTONS] = {
-  { "LIGHT", "ha/panel/light/set", "ha/panel/light/state", false, NULL, NULL },
-  { "FAN",   "ha/panel/fan/set",   "ha/panel/fan/state",   false, NULL, NULL },
-  { "AC",    "ha/panel/ac/set",    "ha/panel/ac/state",    false, NULL, NULL },
-  { "PLUG",  "ha/panel/plug/set",  "ha/panel/plug/state",  false, NULL, NULL },
-  { "TV",    "ha/panel/tv/set",    "ha/panel/tv/state",    false, NULL, NULL },
-  { "BED",   "ha/panel/bed/set",   "ha/panel/bed/state",   false, NULL, NULL },
-  { "LOCK",  "ha/panel/lock/set",  "ha/panel/lock/state",  false, NULL, NULL },
-  { "HEAT",  "ha/panel/heat/set",  "ha/panel/heat/state",  false, NULL, NULL },
-  { "ALL",   "ha/panel/all/set",   "ha/panel/all/state",   false, NULL, NULL }
-};
-
-const char* icons[MAX_BUTTONS] = {
-  LV_SYMBOL_POWER, LV_SYMBOL_REFRESH, LV_SYMBOL_WARNING,
-  LV_SYMBOL_CHARGE, LV_SYMBOL_VIDEO, LV_SYMBOL_HOME,
-  LV_SYMBOL_WARNING, LV_SYMBOL_WARNING, LV_SYMBOL_OK
-};
+HaSwitch switches[MAX_BUTTONS];
 
 String get_weather_description(int code) {
     switch(code) {
@@ -722,7 +700,6 @@ void save_ha_settings(const char* h, const char* p_str, const char* u, const cha
 
           // Subscribe to the Config Topic!
           mqtt.subscribe("ha/panel/config/set");
-          for(int i=0; i<MAX_BUTTONS; i++) mqtt.subscribe(switches[i].topic_state);
           mqtt.subscribe("ha/panel/state/update");
           mqtt.subscribe(mqtt_topic_notify);
           mqtt.publish("ha/panel/sync", "get_states");
@@ -2156,10 +2133,6 @@ void create_switch_grid(lv_obj_t *parent) {
         // Store pointers if you want to update them later
         switches[i].btn = btn;
         switches[i].label = label;
-    }
-    if (mqtt.connected()) {
-        Serial.println("Requesting state sync from HA...");
-        mqtt.publish("ha/panel/sync", "get_states");
     }
 }
 
