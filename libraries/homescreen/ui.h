@@ -23,6 +23,8 @@ extern "C" {
 #endif
 
 #include "ui_helpers.h"
+#include "ui_comp.h"
+#include "ui_comp_hook.h"
 #include "ui_events.h"
 
 ///////////////////// SCREENS ////////////////////
@@ -37,15 +39,15 @@ extern lv_obj_t *ui____initial_actions0;
 LV_IMG_DECLARE( ui_img_bg_bg6rc2_png);   // assets/bg/bg6rc2.png
 LV_IMG_DECLARE( ui_img_253037777);   // assets/ha-icons/lightbulb.png
 LV_IMG_DECLARE( ui_img_133537992);   // assets/ha-icons/ac.png
-LV_IMG_DECLARE( ui_img_1332138075);   // assets/ha-icons/fan.png
-LV_IMG_DECLARE( ui_img_435491338);   // assets/ha-icons/tv.png
-LV_IMG_DECLARE( ui_img_252433816);   // assets/ha-icons/switch.png
-LV_IMG_DECLARE( ui_img_1965837174);   // assets/ha-icons/washmachine.png
 LV_IMG_DECLARE( ui_img_827440816);   // assets/ha-icons/dryer.png
+LV_IMG_DECLARE( ui_img_1332138075);   // assets/ha-icons/fan.png
 LV_IMG_DECLARE( ui_img_175529197);   // assets/ha-icons/garage.png
 LV_IMG_DECLARE( ui_img_979047894);   // assets/ha-icons/radiator.png
 LV_IMG_DECLARE( ui_img_450969811);   // assets/ha-icons/socket.png
 LV_IMG_DECLARE( ui_img_285837919);   // assets/ha-icons/speaker.png
+LV_IMG_DECLARE( ui_img_252433816);   // assets/ha-icons/switch.png
+LV_IMG_DECLARE( ui_img_435491338);   // assets/ha-icons/tv.png
+LV_IMG_DECLARE( ui_img_1965837174);   // assets/ha-icons/washmachine.png
 LV_IMG_DECLARE( ui_img_bg_bg3rc2_png);   // assets/bg/bg3rc2.png
 
 // UI INIT
