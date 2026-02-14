@@ -2773,8 +2773,14 @@ void update_weather_ui(weather_type_t type, bool is_night) {
             
         default: return; 
     }
-    if (ui_ImgBg) lv_image_set_src(ui_ImgBg, new_bg);
-    lv_obj_set_style_bg_image_src(ui_IconWeather, new_icon, LV_PART_MAIN | LV_STATE_DEFAULT);
+
+    if (ui_ImgBg && new_bg) {
+        lv_img_set_src(ui_ImgBg, new_bg);
+    }
+    
+    if (ui_IconWeather && new_icon) {
+        lv_img_set_src(ui_IconWeather, new_icon);
+    }
 }
 
 void show_loader(const char* msg) {
