@@ -221,6 +221,14 @@ PubSubClient mqtt(wifiClient);
 
 const char* monthNames[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
 
+int getDayOfWeek(int d, int m, int y) {
+    if (m < 3) { m += 12; y -= 1; }
+    int K = y % 100;
+    int J = y / 100;
+    int f = d + 13*(m+1)/5 + K + K/4 + J/4 + 5*J;
+    int res = f % 7;
+    return (res < 0) ? res + 7 : res; 
+}
 
 struct DynamicSwitch {
     char name[16];      // Label (e.g., "Kitchen")
@@ -302,6 +310,7 @@ void update_status_icons();
 void update_weather_ui(weather_type_t type, bool is_night);
 void update_loader_msg(const char* msg);
 void perform_geocoding_search(const char* query);
+int getDayOfWeek(int d, int m, int y);
 
 /* ================= HARDWARE DRIVERS ================= */
 bool gt911_read_touch(uint16_t &x, uint16_t &y) {
