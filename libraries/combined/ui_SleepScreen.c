@@ -84,13 +84,13 @@ ui_LabelTemp = lv_label_create(ui_SleepScreen);
 lv_obj_set_width( ui_LabelTemp, LV_SIZE_CONTENT);  /// 1
 lv_obj_set_height( ui_LabelTemp, LV_SIZE_CONTENT);   /// 1
 lv_obj_set_x( ui_LabelTemp, 30 );
-lv_obj_set_y( ui_LabelTemp, 80 );
+lv_obj_set_y( ui_LabelTemp, 85 );
 lv_obj_set_align( ui_LabelTemp, LV_ALIGN_LEFT_MID );
 lv_label_set_text(ui_LabelTemp,"--°");
 lv_obj_set_style_text_color(ui_LabelTemp, lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT );
 lv_obj_set_style_text_opa(ui_LabelTemp, 255, LV_PART_MAIN| LV_STATE_DEFAULT);
 lv_obj_set_style_text_font(ui_LabelTemp, &lv_font_montserrat_44, LV_PART_MAIN| LV_STATE_DEFAULT);
-lv_obj_set_style_transform_scale(ui_LabelTemp, 400, LV_PART_MAIN| LV_STATE_DEFAULT);
+lv_obj_set_style_transform_scale(ui_LabelTemp, 500, LV_PART_MAIN| LV_STATE_DEFAULT);
 
 ui_LabelWeather = lv_label_create(ui_SleepScreen);
 lv_obj_set_width( ui_LabelWeather, LV_SIZE_CONTENT);  /// 1
