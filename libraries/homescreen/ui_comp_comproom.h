@@ -3,15 +3,20 @@
 // LVGL version: 8.3.11
 // Project name: SquareLine_Project
 
-#ifndef _SQUARELINE_PROJECT_UI_COMP_HOOK_H
-#define _SQUARELINE_PROJECT_UI_COMP_HOOK_H
+#ifndef _UI_COMP_COMPROOM_H
+#define _UI_COMP_COMPROOM_H
+
+#include "ui.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-void ui_comp_CompRoom_create_hook( lv_obj_t *comp );
-void ui_comp_CompSwitch_create_hook( lv_obj_t *comp );
+// COMPONENT CompRoom
+#define UI_COMP_COMPROOM_COMPROOM 0
+#define UI_COMP_COMPROOM_RMT1 1
+#define _UI_COMP_COMPROOM_NUM 2
+lv_obj_t *ui_CompRoom_create(lv_obj_t *comp_parent);
 
 #ifdef __cplusplus
 } /*extern "C"*/

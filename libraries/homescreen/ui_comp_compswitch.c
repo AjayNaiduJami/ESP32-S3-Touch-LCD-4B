@@ -16,6 +16,7 @@ lv_obj_set_width( cui_CompSwitch, 205);
 lv_obj_set_height( cui_CompSwitch, 70);
 lv_obj_set_x( cui_CompSwitch, 1 );
 lv_obj_set_y( cui_CompSwitch, 1 );
+lv_obj_add_flag( cui_CompSwitch, LV_OBJ_FLAG_CHECKABLE );   /// Flags
 lv_obj_clear_flag( cui_CompSwitch, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE );    /// Flags
 lv_obj_set_style_radius(cui_CompSwitch, 12, LV_PART_MAIN| LV_STATE_DEFAULT);
 lv_obj_set_style_bg_color(cui_CompSwitch, lv_color_hex(0x000000), LV_PART_MAIN | LV_STATE_DEFAULT );
@@ -29,10 +30,13 @@ lv_obj_set_height( cui_icc1, 50);
 lv_obj_set_x( cui_icc1, 10 );
 lv_obj_set_y( cui_icc1, 0 );
 lv_obj_set_align( cui_icc1, LV_ALIGN_LEFT_MID );
+lv_obj_add_flag( cui_icc1, LV_OBJ_FLAG_CHECKABLE );   /// Flags
 lv_obj_clear_flag( cui_icc1, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE );    /// Flags
 lv_obj_set_style_radius(cui_icc1, 50, LV_PART_MAIN| LV_STATE_DEFAULT);
-lv_obj_set_style_bg_color(cui_icc1, lv_color_hex(0xFEC106), LV_PART_MAIN | LV_STATE_DEFAULT );
+lv_obj_set_style_bg_color(cui_icc1, lv_color_hex(0x000000), LV_PART_MAIN | LV_STATE_DEFAULT );
 lv_obj_set_style_bg_opa(cui_icc1, 80, LV_PART_MAIN| LV_STATE_DEFAULT);
+lv_obj_set_style_bg_color(cui_icc1, lv_color_hex(0xFEC106), LV_PART_MAIN | LV_STATE_CHECKED );
+lv_obj_set_style_bg_opa(cui_icc1, 80, LV_PART_MAIN| LV_STATE_CHECKED);
 
 lv_obj_t *cui_icp1;
 cui_icp1 = lv_obj_create(cui_icc1);
@@ -43,8 +47,11 @@ lv_obj_clear_flag( cui_icp1, LV_OBJ_FLAG_SCROLLABLE );    /// Flags
 lv_obj_set_style_bg_color(cui_icp1, lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT );
 lv_obj_set_style_bg_opa(cui_icp1, 0, LV_PART_MAIN| LV_STATE_DEFAULT);
 lv_obj_set_style_bg_img_src( cui_icp1, &ui_img_253037777, LV_PART_MAIN | LV_STATE_DEFAULT );
-lv_obj_set_style_bg_img_recolor(cui_icp1, lv_color_hex(0xFEC106), LV_PART_MAIN| LV_STATE_DEFAULT);
+lv_obj_set_style_bg_img_recolor(cui_icp1, lv_color_hex(0xD6D6D6), LV_PART_MAIN| LV_STATE_DEFAULT);
 lv_obj_set_style_bg_img_recolor_opa(cui_icp1, 255, LV_PART_MAIN| LV_STATE_DEFAULT);
+lv_obj_set_style_bg_img_src( cui_icp1, &ui_img_253037777, LV_PART_MAIN | LV_STATE_CHECKED );
+lv_obj_set_style_bg_img_recolor(cui_icp1, lv_color_hex(0xFEC106), LV_PART_MAIN| LV_STATE_CHECKED);
+lv_obj_set_style_bg_img_recolor_opa(cui_icp1, 255, LV_PART_MAIN| LV_STATE_CHECKED);
 
 lv_obj_t *cui_swn1;
 cui_swn1 = lv_label_create(cui_CompSwitch);

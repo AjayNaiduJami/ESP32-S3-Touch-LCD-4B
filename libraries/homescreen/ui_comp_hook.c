@@ -8,3 +8,7 @@
 void ui_comp_CompSwitch_create_hook( lv_obj_t * comp)
 {
 }
+
+void ui_comp_CompRoom_create_hook( lv_obj_t * comp)
+{
+}

@@ -1,4 +1,5 @@
-SET(SOURCES ui_comp_compswitch.c
+SET(SOURCES ui_comp_comproom.c
+    ui_comp_compswitch.c
     ui_comp.c
     ui_HAScreen.c
     ui.c
