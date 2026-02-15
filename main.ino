@@ -2994,7 +2994,7 @@ void handle_clock_update() {
         
         if (lv_scr_act() == screen_about) update_about_text();
         
-        // 1. Update HOME SCREEN
+        // 1. Update HOME SCREEN Text
         if (ui_time) { 
             char buf[10]; snprintf(buf, sizeof(buf), "%02d:%02d", dt.getHour(), dt.getMinute());
             lv_label_set_text(ui_time, buf);
@@ -3006,36 +3006,13 @@ void handle_clock_update() {
              snprintf(buf, sizeof(buf), "%s, %02d/%02d", days[wd], dt.getDay(), dt.getMonth());
              lv_label_set_text(ui_date, buf);
         }
-
-        // --- NEW: Update Home Screen Weather & Status ---
+        
+        // Update Home Screen Weather Text
         if (ui_temp) lv_label_set_text(ui_temp, (String(current_temp, 0) + "°").c_str());
         if (ui_loc) lv_label_set_text(ui_loc, sysLoc.city);
         if (ui_cli) lv_label_set_text(ui_cli, get_weather_description(weather_code).c_str());
 
-        // Update Home Screen Icons (Simple Symbols)
-        if (ui_wifi) {
-            if (current_wifi_state == WIFI_CONNECTED) lv_label_set_text(ui_wifi, LV_SYMBOL_WIFI);
-            else lv_label_set_text(ui_wifi, ""); // Hide if disconnected
-        }
-        if (ui_mqtt) {
-            if (mqtt_enabled && mqtt.connected()) lv_label_set_text(ui_mqtt, LV_SYMBOL_LOOP); 
-            else lv_label_set_text(ui_mqtt, "");
-        }
-        if (ui_batt) {
-             if (power.isCharging()) {
-                 lv_label_set_text(ui_batt, LV_SYMBOL_CHARGE);
-             } else {
-                 int pct = power.getBatteryPercent();
-                 if(pct > 90) lv_label_set_text(ui_batt, LV_SYMBOL_BATTERY_FULL);
-                 else if(pct > 60) lv_label_set_text(ui_batt, LV_SYMBOL_BATTERY_3);
-                 else if(pct > 30) lv_label_set_text(ui_batt, LV_SYMBOL_BATTERY_2);
-                 else if(pct > 10) lv_label_set_text(ui_batt, LV_SYMBOL_BATTERY_1);
-                 else lv_label_set_text(ui_batt, LV_SYMBOL_BATTERY_EMPTY);
-             }
-        }
-        // ------------------------------------------------
-
-        // 2. Update SLEEP SCREEN
+        // 2. Update SLEEP SCREEN Text
         if (ui_SleepScreen) {
             int h = dt.getHour();
             const char* ampm = (h >= 12) ? "PM" : "AM";
@@ -3069,24 +3046,41 @@ void handle_clock_update() {
                     lv_obj_add_flag(ui_AlertsLabel, LV_OBJ_FLAG_HIDDEN);
                 }
             }
-            
-            update_status_icons(); 
         }
+        
+        // 3. Update Icons for BOTH screens using shared logic
+        update_status_icons(); 
     }
 }
 
 void update_status_icons() {
     // WiFi Icon
     if (ui_IconWifi != NULL) {
-        if(current_wifi_state == WIFI_CONNECTED) lv_obj_set_style_text_color(ui_IconWifi, lv_color_white(), 0);
-        else if (current_wifi_state == WIFI_CONNECTING) lv_obj_set_style_text_color(ui_IconWifi, lv_palette_main(LV_PALETTE_ORANGE), 0);
-        else lv_obj_set_style_text_color(ui_IconWifi, lv_palette_main(LV_PALETTE_RED), 0);
+        if(current_wifi_state == WIFI_CONNECTED) {
+            lv_obj_set_style_text_color(ui_IconWifi, lv_color_white(), 0);
+            lv_obj_set_style_text_color(ui_wifi, lv_color_white(), 0);
+        }
+        else if (current_wifi_state == WIFI_CONNECTING) {
+            lv_obj_set_style_text_color(ui_IconWifi, lv_palette_main(LV_PALETTE_ORANGE), 0);
+            lv_obj_set_style_text_color(ui_wifi, lv_palette_main(LV_PALETTE_ORANGE), 0);
+        }
+        else {
+            lv_obj_set_style_text_color(ui_IconWifi, lv_palette_main(LV_PALETTE_RED), 0);
+            lv_obj_set_style_text_color(ui_wifi, lv_palette_main(LV_PALETTE_RED), 0);
+        }
     }
     // MQTT Icon
     if (ui_IconMqtt != NULL) {
-        if (mqtt_enabled && mqtt.connected()) lv_obj_set_style_text_color(ui_IconMqtt, lv_color_white(), 0);
-        else if (mqtt_enabled) lv_obj_set_style_text_color(ui_IconMqtt, lv_palette_main(LV_PALETTE_ORANGE), 0);
-        else lv_obj_set_style_text_color(ui_IconMqtt, lv_palette_main(LV_PALETTE_RED), 0);
+        if (mqtt_enabled && mqtt.connected()) {
+            lv_obj_set_style_text_color(ui_IconMqtt, lv_color_white(), 0);
+            lv_obj_set_style_text_color(ui_mqtt, lv_color_white(), 0);
+        } else if (mqtt_enabled) {
+            lv_obj_set_style_text_color(ui_IconMqtt, lv_palette_main(LV_PALETTE_ORANGE), 0);
+            lv_obj_set_style_text_color(ui_mqtt, lv_palette_main(LV_PALETTE_ORANGE), 0);
+        } else {
+            lv_obj_set_style_text_color(ui_IconMqtt, lv_palette_main(LV_PALETTE_RED), 0);
+            lv_obj_set_style_text_color(ui_mqtt, lv_palette_main(LV_PALETTE_RED), 0);
+        }
     }
     // Battery Icon
     if (ui_IconBat != NULL) {
@@ -3095,35 +3089,45 @@ void update_status_icons() {
             String batText = "";
             if (pct > 95) {
                 lv_obj_set_style_text_color(ui_IconBat, lv_color_white(), 0);
+                lv_obj_set_style_text_color(ui_batt, lv_color_white(), 0);
                 batText = String(LV_SYMBOL_BATTERY_FULL);
             }
             else if (pct > 70 && pct <= 95) {
                 lv_obj_set_style_text_color(ui_IconBat, lv_color_white(), 0);
+                lv_obj_set_style_text_color(ui_batt, lv_color_white(), 0);
                 batText = String(LV_SYMBOL_BATTERY_3);
             }
             else if (pct > 40 && pct <= 70) {
                 lv_obj_set_style_text_color(ui_IconBat, lv_color_white(), 0);
+                lv_obj_set_style_text_color(ui_batt, lv_color_white(), 0);
                 batText = String(LV_SYMBOL_BATTERY_2);
             }
             else if (pct > 15 && pct <= 40) {
                 lv_obj_set_style_text_color(ui_IconBat, lv_palette_main(LV_PALETTE_YELLOW), 0);
+                lv_obj_set_style_text_color(ui_batt, lv_palette_main(LV_PALETTE_YELLOW), 0);
                 batText = String(LV_SYMBOL_BATTERY_1);
             }
             else if (pct > 5 && pct <= 15) {
                 lv_obj_set_style_text_color(ui_IconBat, lv_palette_main(LV_PALETTE_RED), 0);
+                lv_obj_set_style_text_color(ui_batt, lv_palette_main(LV_PALETTE_RED), 0);
                 batText = String(LV_SYMBOL_BATTERY_1);
             } else {
                 lv_obj_set_style_text_color(ui_IconBat, lv_palette_main(LV_PALETTE_RED), 0);
+                lv_obj_set_style_text_color(ui_batt, lv_palette_main(LV_PALETTE_RED), 0);
                 batText = String(LV_SYMBOL_BATTERY_EMPTY);
             }
             if(power.isCharging()) {
                 lv_obj_set_style_text_color(ui_IconBat, lv_palette_main(LV_PALETTE_YELLOW), 0);
+                lv_obj_set_style_text_color(ui_batt, lv_palette_main(LV_PALETTE_YELLOW), 0);
                 batText = String(LV_SYMBOL_CHARGE);
             }
             lv_label_set_text(ui_IconBat, batText.c_str());
+            lv_label_set_text(ui_batt, batText.c_str());
         } else {
             lv_obj_set_style_text_color(ui_IconBat, lv_color_white(), 0);
+            lv_obj_set_style_text_color(ui_batt, lv_color_white(), 0);
             lv_label_set_text(ui_IconBat, LV_SYMBOL_USB);
+            lv_label_set_text(ui_batt, LV_SYMBOL_USB);
         }
     }
 }
