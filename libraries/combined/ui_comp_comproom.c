@@ -14,7 +14,7 @@ cui_CompRoom = lv_obj_create(comp_parent);
 lv_obj_set_height( cui_CompRoom, 30);
 lv_obj_set_width( cui_CompRoom, LV_SIZE_CONTENT);  /// 1
 lv_obj_set_align( cui_CompRoom, LV_ALIGN_LEFT_MID );
-lv_obj_add_state( cui_CompRoom, LV_STATE_CHECKED | LV_STATE_PRESSED );     /// States
+lv_obj_add_state( cui_CompRoom, LV_STATE_CHECKED );     /// States
 lv_obj_remove_flag( cui_CompRoom, LV_OBJ_FLAG_SCROLLABLE );    /// Flags
 lv_obj_set_style_radius(cui_CompRoom, 24, LV_PART_MAIN| LV_STATE_DEFAULT);
 lv_obj_set_style_bg_color(cui_CompRoom, lv_color_hex(0x000000), LV_PART_MAIN | LV_STATE_DEFAULT );
@@ -26,8 +26,6 @@ lv_obj_set_style_pad_bottom(cui_CompRoom, 0, LV_PART_MAIN| LV_STATE_DEFAULT);
 lv_obj_set_style_radius(cui_CompRoom, 24, LV_PART_MAIN| LV_STATE_CHECKED);
 lv_obj_set_style_bg_color(cui_CompRoom, lv_color_hex(0x28A0FB), LV_PART_MAIN | LV_STATE_CHECKED );
 lv_obj_set_style_bg_opa(cui_CompRoom, 255, LV_PART_MAIN| LV_STATE_CHECKED);
-lv_obj_set_style_bg_color(cui_CompRoom, lv_color_hex(0x000000), LV_PART_MAIN | LV_STATE_PRESSED );
-lv_obj_set_style_bg_opa(cui_CompRoom, 80, LV_PART_MAIN| LV_STATE_PRESSED);
 
 lv_obj_t *cui_rmT1;
 cui_rmT1 = lv_label_create(cui_CompRoom);

@@ -6,11 +6,11 @@ ui_SleepScreen.c
 ui.c
 ui_comp_hook.c
 ui_helpers.c
-ui_img_bg_bg6rc2_png.c
+ui_img_bg_bg3rc2_png.c
 ui_img_253037777.c
 ui_img_scenes_clear_day_png.c
 ui_img_weather_day_png.c
-ui_img_bg_bg3rc2_png.c
+ui_img_bg_bg6rc2_png.c
 ui_img_133537992.c
 ui_img_827440816.c
 ui_img_1332138075.c

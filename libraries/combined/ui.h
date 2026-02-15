@@ -37,11 +37,11 @@ extern "C" {
 extern lv_obj_t *ui____initial_actions0;
 
 // IMAGES AND IMAGE SETS
-LV_IMG_DECLARE( ui_img_bg_bg6rc2_png);   // assets/bg/bg6rc2.png
+LV_IMG_DECLARE( ui_img_bg_bg3rc2_png);   // assets/bg/bg3rc2.png
 LV_IMG_DECLARE( ui_img_253037777);   // assets/ha-icons/lightbulb.png
 LV_IMG_DECLARE( ui_img_scenes_clear_day_png);   // assets/scenes/clear_day.png
 LV_IMG_DECLARE( ui_img_weather_day_png);   // assets/weather/day.png
-LV_IMG_DECLARE( ui_img_bg_bg3rc2_png);   // assets/bg/bg3rc2.png
+LV_IMG_DECLARE( ui_img_bg_bg6rc2_png);   // assets/bg/bg6rc2.png
 LV_IMG_DECLARE( ui_img_133537992);   // assets/ha-icons/ac.png
 LV_IMG_DECLARE( ui_img_827440816);   // assets/ha-icons/dryer.png
 LV_IMG_DECLARE( ui_img_1332138075);   // assets/ha-icons/fan.png

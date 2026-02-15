@@ -22,7 +22,7 @@ lv_obj_set_align( ui_baseP, LV_ALIGN_CENTER );
 lv_obj_set_flex_flow(ui_baseP,LV_FLEX_FLOW_ROW_WRAP);
 lv_obj_set_flex_align(ui_baseP, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
 lv_obj_remove_flag( ui_baseP, LV_OBJ_FLAG_SCROLLABLE );    /// Flags
-lv_obj_set_style_bg_image_src( ui_baseP, &ui_img_bg_bg6rc2_png, LV_PART_MAIN | LV_STATE_DEFAULT );
+lv_obj_set_style_bg_image_src( ui_baseP, &ui_img_bg_bg3rc2_png, LV_PART_MAIN | LV_STATE_DEFAULT );
 
 ui_topP = lv_obj_create(ui_HomeScreen);
 lv_obj_set_width( ui_topP, 445);
