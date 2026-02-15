@@ -43,7 +43,9 @@ const void* get_icon_by_name(const char* icon_name) {
 void update_manual_switch_visuals(lv_obj_t* btn, bool is_on) {
     if (lv_obj_get_child_cnt(btn) < 1) return;
 
+    // Child 0 is the Icon Container
     lv_obj_t* icon_cont = lv_obj_get_child(btn, 0);
+    // Child 0 of Icon Container is the Image
     lv_obj_t* icon_img = (lv_obj_get_child_cnt(icon_cont) > 0) ? lv_obj_get_child(icon_cont, 0) : NULL;
 
     if (is_on) {
@@ -209,7 +211,9 @@ void refresh_ui_data(const char* json_payload) {
         lv_obj_remove_style_all(sw_btn); 
         lv_obj_set_width(sw_btn, SW_WIDTH);
         lv_obj_set_height(sw_btn, SW_HEIGHT);
-        lv_obj_add_flag(sw_btn, LV_OBJ_FLAG_CHECKABLE);
+        
+        // ** FIX HERE: Cast combined flags to lv_obj_flag_t **
+        lv_obj_add_flag(sw_btn, (lv_obj_flag_t)(LV_OBJ_FLAG_CHECKABLE | LV_OBJ_FLAG_CLICKABLE));
         lv_obj_clear_flag(sw_btn, LV_OBJ_FLAG_SCROLLABLE);
         
         // Base Style
@@ -229,16 +233,21 @@ void refresh_ui_data(const char* json_payload) {
         lv_obj_set_style_radius(icon_cont, 50, LV_PART_MAIN); 
         lv_obj_set_style_bg_color(icon_cont, lv_color_hex(COLOR_BG_BLACK), LV_PART_MAIN);
         lv_obj_set_style_bg_opa(icon_cont, 80, LV_PART_MAIN); 
+        
+        // DISABLE CHILD CLICK
+        lv_obj_clear_flag(icon_cont, LV_OBJ_FLAG_CLICKABLE);
         lv_obj_clear_flag(icon_cont, LV_OBJ_FLAG_SCROLLABLE);
         
-        // C. Icon Image [FIXED: No Borders/BG]
+        // C. Icon Image
         lv_obj_t* img = lv_img_create(icon_cont);
         lv_img_set_src(img, get_icon_by_name(icon));
         lv_obj_center(img);
-        lv_obj_set_style_bg_opa(img, 0, LV_PART_MAIN); // Transparent
-        lv_obj_set_style_border_width(img, 0, LV_PART_MAIN); // No Border
+        lv_obj_set_style_bg_opa(img, 0, LV_PART_MAIN);
+        lv_obj_set_style_border_width(img, 0, LV_PART_MAIN); 
         lv_obj_set_style_img_recolor(img, lv_color_hex(COLOR_INACTIVE_GREY), LV_PART_MAIN);
         lv_obj_set_style_img_recolor_opa(img, 255, LV_PART_MAIN);
+        // DISABLE CHILD CLICK
+        lv_obj_clear_flag(img, LV_OBJ_FLAG_CLICKABLE);
 
         // D. Name Label
         lv_obj_t* lbl_n = lv_label_create(sw_btn);
@@ -250,6 +259,8 @@ void refresh_ui_data(const char* json_payload) {
         lv_obj_set_style_text_color(lbl_n, lv_color_hex(COLOR_TEXT_WHITE), LV_PART_MAIN);
         lv_obj_set_style_text_align(lbl_n, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN);
         lv_obj_set_style_text_font(lbl_n, &lv_font_montserrat_16, LV_PART_MAIN);
+        // DISABLE CHILD CLICK
+        lv_obj_clear_flag(lbl_n, LV_OBJ_FLAG_CLICKABLE);
 
         // E. Room Label
         lv_obj_t* lbl_r = lv_label_create(sw_btn);
@@ -261,6 +272,8 @@ void refresh_ui_data(const char* json_payload) {
         lv_obj_set_style_text_color(lbl_r, lv_color_hex(COLOR_TEXT_WHITE), LV_PART_MAIN);
         lv_obj_set_style_text_align(lbl_r, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN);
         lv_obj_set_style_text_font(lbl_r, &lv_font_montserrat_12, LV_PART_MAIN);
+        // DISABLE CHILD CLICK
+        lv_obj_clear_flag(lbl_r, LV_OBJ_FLAG_CLICKABLE);
 
         // State Init
         bool is_on = (strcasecmp(state, "ON") == 0);
@@ -293,11 +306,17 @@ void refresh_ui_data(const char* json_payload) {
         lv_obj_set_style_radius(chip, 24, LV_PART_MAIN);
         lv_obj_set_style_border_width(chip, 0, LV_PART_MAIN);
         lv_obj_set_style_shadow_width(chip, 0, LV_PART_MAIN);
+        
+        // Ensure Parent Chip is Clickable
+        lv_obj_add_flag(chip, LV_OBJ_FLAG_CLICKABLE);
 
         lv_obj_t* lbl = lv_label_create(chip);
         lv_label_set_text(lbl, room_list[i]);
         lv_obj_center(lbl);
         lv_obj_set_style_text_font(lbl, &lv_font_montserrat_14, 0);
+        
+        // Disable Label Click
+        lv_obj_clear_flag(lbl, LV_OBJ_FLAG_CLICKABLE);
 
         if (String(room_list[i]) == current_room_filter) {
             lv_obj_set_style_bg_color(chip, lv_color_hex(COLOR_BLUE_ACTIVE), LV_PART_MAIN);
