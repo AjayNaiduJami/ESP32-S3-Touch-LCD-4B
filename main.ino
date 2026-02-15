@@ -86,6 +86,8 @@ lv_obj_t *screen_ha;
 lv_obj_t *screen_time_date;
 lv_obj_t *loader_label = NULL;
 
+extern lv_obj_t *ui_baseP;
+
 // Time Screen Handles (Numpad Version)
 lv_obj_t *kb_time;
 lv_obj_t *sw_ntp_auto;
@@ -2717,6 +2719,16 @@ void fetch_weather_data() {
 }
 
 void update_weather_ui(weather_type_t type, bool is_night) {
+
+    if (ui_baseP) {
+        if (is_night) {
+            // Night Background
+            lv_obj_set_style_bg_image_src(ui_baseP, &ui_img_bg_bg6rc2_png, LV_PART_MAIN | LV_STATE_DEFAULT);
+        } else {
+            // Day Background
+            lv_obj_set_style_bg_image_src(ui_baseP, &ui_img_bg_bg3rc2_png, LV_PART_MAIN | LV_STATE_DEFAULT);
+        }
+    }
     
     if (ui_SleepScreen == NULL || ui_IconWeather == NULL) return;
 
