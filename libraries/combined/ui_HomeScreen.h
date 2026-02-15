@@ -21,7 +21,7 @@ extern lv_obj_t *ui_rmTa;
 extern lv_obj_t *ui_rmC;
 extern lv_obj_t *ui_CompRoom;
 extern lv_obj_t *ui_tdC;
-extern lv_obj_t *ui_Time;
+extern lv_obj_t *ui_time;
 extern lv_obj_t *ui_temp;
 extern lv_obj_t *ui_loc;
 extern lv_obj_t *ui_cli;

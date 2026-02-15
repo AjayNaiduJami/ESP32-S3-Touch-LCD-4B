@@ -5,7 +5,7 @@
 
 #include "ui.h"
 
-lv_obj_t *ui_HomeScreen = NULL;lv_obj_t *ui_baseP = NULL;lv_obj_t *ui_topP = NULL;lv_obj_t *ui_rmPe = NULL;lv_obj_t *ui_rmTa = NULL;lv_obj_t *ui_rmC = NULL;lv_obj_t *ui_CompRoom = NULL;lv_obj_t *ui_tdC = NULL;lv_obj_t *ui_Time = NULL;lv_obj_t *ui_temp = NULL;lv_obj_t *ui_loc = NULL;lv_obj_t *ui_cli = NULL;lv_obj_t *ui_date = NULL;lv_obj_t *ui_stC = NULL;lv_obj_t *ui_wifi = NULL;lv_obj_t *ui_mqtt = NULL;lv_obj_t *ui_batt = NULL;lv_obj_t *ui_bell = NULL;lv_obj_t *ui_haswCnd = NULL;lv_obj_t *ui_noData1 = NULL;lv_obj_t *ui_haswC = NULL;lv_obj_t *ui_CompSwitch = NULL;
+lv_obj_t *ui_HomeScreen = NULL;lv_obj_t *ui_baseP = NULL;lv_obj_t *ui_topP = NULL;lv_obj_t *ui_rmPe = NULL;lv_obj_t *ui_rmTa = NULL;lv_obj_t *ui_rmC = NULL;lv_obj_t *ui_CompRoom = NULL;lv_obj_t *ui_tdC = NULL;lv_obj_t *ui_time = NULL;lv_obj_t *ui_temp = NULL;lv_obj_t *ui_loc = NULL;lv_obj_t *ui_cli = NULL;lv_obj_t *ui_date = NULL;lv_obj_t *ui_stC = NULL;lv_obj_t *ui_wifi = NULL;lv_obj_t *ui_mqtt = NULL;lv_obj_t *ui_batt = NULL;lv_obj_t *ui_bell = NULL;lv_obj_t *ui_haswCnd = NULL;lv_obj_t *ui_noData1 = NULL;lv_obj_t *ui_haswC = NULL;lv_obj_t *ui_CompSwitch = NULL;
 // event funtions
 
 // build funtions
@@ -90,19 +90,19 @@ lv_obj_set_style_radius(ui_tdC, 24, LV_PART_MAIN| LV_STATE_DEFAULT);
 lv_obj_set_style_bg_color(ui_tdC, lv_color_hex(0x000000), LV_PART_MAIN | LV_STATE_DEFAULT );
 lv_obj_set_style_bg_opa(ui_tdC, 80, LV_PART_MAIN| LV_STATE_DEFAULT);
 
-ui_Time = lv_label_create(ui_tdC);
-lv_obj_set_width( ui_Time, 150);
-lv_obj_set_height( ui_Time, 50);
-lv_obj_set_x( ui_Time, -10 );
-lv_obj_set_y( ui_Time, 5 );
-lv_obj_set_align( ui_Time, LV_ALIGN_TOP_RIGHT );
-lv_label_set_text(ui_Time,"00:00");
-lv_obj_set_style_text_color(ui_Time, lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT );
-lv_obj_set_style_text_opa(ui_Time, 255, LV_PART_MAIN| LV_STATE_DEFAULT);
-lv_obj_set_style_text_align(ui_Time, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN| LV_STATE_DEFAULT);
-lv_obj_set_style_text_font(ui_Time, &lv_font_montserrat_44, LV_PART_MAIN| LV_STATE_DEFAULT);
-lv_obj_set_style_bg_color(ui_Time, lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT );
-lv_obj_set_style_bg_opa(ui_Time, 0, LV_PART_MAIN| LV_STATE_DEFAULT);
+ui_time = lv_label_create(ui_tdC);
+lv_obj_set_width( ui_time, 150);
+lv_obj_set_height( ui_time, 50);
+lv_obj_set_x( ui_time, -10 );
+lv_obj_set_y( ui_time, 5 );
+lv_obj_set_align( ui_time, LV_ALIGN_TOP_RIGHT );
+lv_label_set_text(ui_time,"00:00");
+lv_obj_set_style_text_color(ui_time, lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT );
+lv_obj_set_style_text_opa(ui_time, 255, LV_PART_MAIN| LV_STATE_DEFAULT);
+lv_obj_set_style_text_align(ui_time, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN| LV_STATE_DEFAULT);
+lv_obj_set_style_text_font(ui_time, &lv_font_montserrat_44, LV_PART_MAIN| LV_STATE_DEFAULT);
+lv_obj_set_style_bg_color(ui_time, lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT );
+lv_obj_set_style_bg_opa(ui_time, 0, LV_PART_MAIN| LV_STATE_DEFAULT);
 
 ui_temp = lv_label_create(ui_tdC);
 lv_obj_set_width( ui_temp, 90);
@@ -283,7 +283,7 @@ ui_rmTa= NULL;
 ui_rmC= NULL;
 ui_CompRoom= NULL;
 ui_tdC= NULL;
-ui_Time= NULL;
+ui_time= NULL;
 ui_temp= NULL;
 ui_loc= NULL;
 ui_cli= NULL;

@@ -2926,7 +2926,7 @@ void setup() {
     lv_obj_add_event_cb(screen_settings_menu, swipe_event_cb, LV_EVENT_GESTURE, NULL);
 
     lv_scr_load(ui_HomeScreen);
-    // Note: clock_label is legacy, replaced by ui_Time in handle_clock_update
+    // Note: clock_label is legacy, replaced by ui_time in handle_clock_update
     // clock_label = lv_label_create(ui_HomeScreen); ...
 
     configTime(sysLoc.utc_offset, 0, "pool.ntp.org", "time.nist.gov");
@@ -2995,9 +2995,9 @@ void handle_clock_update() {
         if (lv_scr_act() == screen_about) update_about_text();
         
         // 1. Update HOME SCREEN
-        if (ui_Time) { 
+        if (ui_time) { 
             char buf[10]; snprintf(buf, sizeof(buf), "%02d:%02d", dt.getHour(), dt.getMinute());
-            lv_label_set_text(ui_Time, buf);
+            lv_label_set_text(ui_time, buf);
         }
         if (ui_date) { 
              const char* days[] = {"Sat", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri"};
@@ -3007,7 +3007,35 @@ void handle_clock_update() {
              lv_label_set_text(ui_date, buf);
         }
 
-        // 2. Update SLEEP SCREEN (Using double prefix ui_... based on your files)
+        // --- NEW: Update Home Screen Weather & Status ---
+        if (ui_temp) lv_label_set_text(ui_temp, (String(current_temp, 0) + "°").c_str());
+        if (ui_loc) lv_label_set_text(ui_loc, sysLoc.city);
+        if (ui_cli) lv_label_set_text(ui_cli, get_weather_description(weather_code).c_str());
+
+        // Update Home Screen Icons (Simple Symbols)
+        if (ui_wifi) {
+            if (current_wifi_state == WIFI_CONNECTED) lv_label_set_text(ui_wifi, LV_SYMBOL_WIFI);
+            else lv_label_set_text(ui_wifi, ""); // Hide if disconnected
+        }
+        if (ui_mqtt) {
+            if (mqtt_enabled && mqtt.connected()) lv_label_set_text(ui_mqtt, LV_SYMBOL_LOOP); 
+            else lv_label_set_text(ui_mqtt, "");
+        }
+        if (ui_batt) {
+             if (power.isCharging()) {
+                 lv_label_set_text(ui_batt, LV_SYMBOL_CHARGE);
+             } else {
+                 int pct = power.getBatteryPercent();
+                 if(pct > 90) lv_label_set_text(ui_batt, LV_SYMBOL_BATTERY_FULL);
+                 else if(pct > 60) lv_label_set_text(ui_batt, LV_SYMBOL_BATTERY_3);
+                 else if(pct > 30) lv_label_set_text(ui_batt, LV_SYMBOL_BATTERY_2);
+                 else if(pct > 10) lv_label_set_text(ui_batt, LV_SYMBOL_BATTERY_1);
+                 else lv_label_set_text(ui_batt, LV_SYMBOL_BATTERY_EMPTY);
+             }
+        }
+        // ------------------------------------------------
+
+        // 2. Update SLEEP SCREEN
         if (ui_SleepScreen) {
             int h = dt.getHour();
             const char* ampm = (h >= 12) ? "PM" : "AM";
@@ -3046,6 +3074,7 @@ void handle_clock_update() {
         }
     }
 }
+
 void update_status_icons() {
     // WiFi Icon
     if (ui_IconWifi != NULL) {
