@@ -39,7 +39,7 @@ const void* get_icon_by_name(const char* icon_name) {
     return &ui_img_252433816; 
 }
 
-// --- UPDATE STYLES (Toggle Logic) ---
+// --- VISUAL UPDATES ---
 void update_manual_switch_visuals(lv_obj_t* btn, bool is_on) {
     if (lv_obj_get_child_cnt(btn) < 1) return;
     lv_obj_t* icon_cont = lv_obj_get_child(btn, 0);
@@ -60,7 +60,7 @@ void update_manual_switch_visuals(lv_obj_t* btn, bool is_on) {
     }
 }
 
-// --- EVENTS ---
+// --- CLICK HANDLER ---
 void on_manual_switch_toggle(lv_event_t* e) {
     lv_obj_t* btn = (lv_obj_t*)lv_event_get_target(e);
     const char* entity_id = (const char*)lv_event_get_user_data(e);
@@ -69,14 +69,13 @@ void on_manual_switch_toggle(lv_event_t* e) {
     if(was_on) lv_obj_clear_state(btn, LV_STATE_CHECKED);
     else lv_obj_add_state(btn, LV_STATE_CHECKED);
     
-    bool is_on = !was_on;
-    update_manual_switch_visuals(btn, is_on);
+    update_manual_switch_visuals(btn, !was_on);
 
     if (entity_id) {
         JsonDocument* doc = new JsonDocument();
         (*doc)["entity_id"] = entity_id;
-        (*doc)["action"] = is_on ? "turn_on" : "turn_off";
-        if (strstr(entity_id, "cover.")) (*doc)["action"] = is_on ? "open_cover" : "close_cover";
+        (*doc)["action"] = !was_on ? "turn_on" : "turn_off";
+        if (strstr(entity_id, "cover.")) (*doc)["action"] = !was_on ? "open_cover" : "close_cover";
         if (strstr(entity_id, "scene.")) (*doc)["action"] = "turn_on"; 
         
         char buffer[128];
@@ -131,10 +130,25 @@ void on_room_click(lv_event_t* e) {
     apply_switch_filter();
 }
 
+// --- ARROW TOGGLE LOGIC ---
 void on_arrow_click(lv_event_t* e) {
-    if (!ui_rmC) return;
-    if (lv_obj_get_scroll_right(ui_rmC) < 5) lv_obj_scroll_to_x(ui_rmC, 0, LV_ANIM_ON);
-    else lv_obj_scroll_by(ui_rmC, 100, 0, LV_ANIM_ON);
+    if (!ui_rmC || !ui_rmPe) return;
+    
+    // Check if there is more content to the right
+    if (lv_obj_get_scroll_right(ui_rmC) > 5) {
+        // SCROLL TO END (Show Hidden List)
+        lv_coord_t max_x = lv_obj_get_scroll_x(ui_rmC) + lv_obj_get_scroll_right(ui_rmC);
+        lv_obj_scroll_to_x(ui_rmC, max_x, LV_ANIM_ON);
+        
+        // Flip Arrow (180 deg) to indicate "Back"
+        lv_obj_set_style_transform_angle(ui_rmPe, 1800, 0); 
+    } else {
+        // SCROLL TO START (Go Back)
+        lv_obj_scroll_to_x(ui_rmC, 0, LV_ANIM_ON);
+        
+        // Reset Arrow (0 deg)
+        lv_obj_set_style_transform_angle(ui_rmPe, 0, 0);
+    }
 }
 
 // --- MAIN BUILD ---
@@ -172,11 +186,15 @@ void refresh_ui_data(const char* json_payload) {
         lv_obj_add_flag(ui_haswCnd, LV_OBJ_FLAG_HIDDEN);
         lv_obj_clear_flag(ui_haswC, LV_OBJ_FLAG_HIDDEN);
         
+        // Grid Config
         lv_obj_set_flex_flow(ui_haswC, LV_FLEX_FLOW_ROW_WRAP);
         lv_obj_set_flex_align(ui_haswC, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
         lv_obj_set_style_pad_row(ui_haswC, 10, 0);
         lv_obj_set_style_pad_column(ui_haswC, 10, 0);
         lv_obj_set_style_pad_all(ui_haswC, 0, 0);
+        
+        // ** FIX 1: Room List Spacing **
+        lv_obj_set_style_pad_column(ui_rmC, 10, 0); 
     }
 
     const int MAX_ROOMS = 10;
@@ -200,7 +218,6 @@ void refresh_ui_data(const char* json_payload) {
         lv_obj_remove_style_all(sw_btn); 
         lv_obj_set_width(sw_btn, SW_WIDTH);
         lv_obj_set_height(sw_btn, SW_HEIGHT);
-        // Cast flags to lv_obj_flag_t
         lv_obj_add_flag(sw_btn, (lv_obj_flag_t)(LV_OBJ_FLAG_CHECKABLE | LV_OBJ_FLAG_CLICKABLE));
         lv_obj_clear_flag(sw_btn, LV_OBJ_FLAG_SCROLLABLE);
         
@@ -211,7 +228,7 @@ void refresh_ui_data(const char* json_payload) {
         char* entity_store = strdup(entity); 
         lv_obj_set_user_data(sw_btn, (void*)entity_store);
 
-        // Icon Container
+        // Icon Cont
         lv_obj_t* icon_cont = lv_obj_create(sw_btn);
         lv_obj_remove_style_all(icon_cont);
         lv_obj_set_size(icon_cont, 50, 50);
@@ -223,7 +240,7 @@ void refresh_ui_data(const char* json_payload) {
         lv_obj_clear_flag(icon_cont, LV_OBJ_FLAG_CLICKABLE);
         lv_obj_clear_flag(icon_cont, LV_OBJ_FLAG_SCROLLABLE);
         
-        // Icon
+        // Icon Img
         lv_obj_t* img = lv_img_create(icon_cont);
         lv_img_set_src(img, get_icon_by_name(icon));
         lv_obj_center(img);
@@ -263,7 +280,7 @@ void refresh_ui_data(const char* json_payload) {
 
         lv_obj_add_event_cb(sw_btn, on_manual_switch_toggle, LV_EVENT_CLICKED, (void*)entity_store);
 
-        // Collect Room
+        // Room Collection
         bool exists = false;
         for(int k=0; k<room_count; k++) {
             if(strcmp(room_list[k], room) == 0) { exists = true; break; }
@@ -311,12 +328,15 @@ void refresh_ui_data(const char* json_payload) {
         delay(5);
     }
     
-    // --- ARROW LOGIC (Corrected) ---
+    // --- ARROW LOGIC & BORDER FIX ---
+    // ** FIX 2: Remove Arrow Border **
+    if(ui_rmPe) lv_obj_set_style_border_width(ui_rmPe, 0, LV_PART_MAIN); 
+    if(ui_rmPe) lv_obj_set_style_transform_angle(ui_rmPe, 0, 0); // Reset Rotation
+
     lv_obj_update_layout(ui_rmC);
-    // Reset to start to measure correctly
     lv_obj_scroll_to_x(ui_rmC, 0, LV_ANIM_OFF);
     
-    // Check if there is scrollable content to the right
+    // ** FIX 3: Arrow Visibility logic: Visible if overflow exists **
     if (lv_obj_get_scroll_right(ui_rmC) > 0) {
         lv_obj_clear_flag(ui_rmPe, LV_OBJ_FLAG_HIDDEN);
     } else {
