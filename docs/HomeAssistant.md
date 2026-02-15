@@ -22,18 +22,20 @@ You do not need to code C++ to change buttons. You send a "Configuration Payload
 ```json
 {
   "buttons": [
-    {"name": "Kitchen", "entity": "light.kitchen_main", "icon": "light"},
-    {"name": "Garage",  "entity": "cover.garage_door",  "icon": "power"},
-    {"name": "AC",      "entity": "climate.living_room","icon": "fan"},
-    {"name": "Movie",   "entity": "scene.movie_night",  "icon": "light"},
-    {"name": "Table",   "entity": "light.dining_table", "icon": "light"},
-    {"name": "Plug",    "entity": "switch.smart_plug",  "icon": "power"}
+    {"name": "Kitchen", "entity": "light.kitchen_main", "icon": "light", "room": "Kitchen", "state": "OFF"},
+    {"name": "Garage",  "entity": "cover.garage_door",  "icon": "power", "room": "Garage", "state": "OFF"},
+    {"name": "AC",      "entity": "climate.living_room","icon": "fan", "room": "Living Room", "state": "OFF"},
+    {"name": "Movie",   "entity": "scene.movie_night",  "icon": "light", "room": "Master BedRoom", "state": "OFF"},
+    {"name": "Table",   "entity": "light.dining_table", "icon": "light", "room": "Dining Room", "state": "OFF"},
+    {"name": "Plug",    "entity": "switch.smart_plug",  "icon": "power", "room": "Work Room", "state": "OFF"}
   ]
 }
 ```
 
-- **Icons:** You can use "light", "fan", "power"
-- **Max Buttons:** 9
+- **Icons:** You can use "light", "fan", "ac", "radiator", "tv", "dryer", "garage", "washer", "speaker", "socket", "power"
+- **Max Buttons:** 6
+
+*Note*: **The reason we added state in config json:** When the screen layout is rebuilt, all buttons are destroyed and recreated. If we didn't read the state from the config JSON immediately, all switches would default to OFF. They would stay OFF for a split second (or longer) until the separate state/update messages arrive via MQTT. This would cause your dashboard to "flicker" (buttons flipping from Off -> On) every time the config refreshes.
 
 ## Step 2: Create the Automations
 

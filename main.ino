@@ -16,6 +16,8 @@
 #include <Preferences.h>
 
 #include "ui.h"
+#include "ui_comp.h"
+#include "ui_logic.h" 
 
 /* ================= CONFIG ================= */
 
@@ -57,6 +59,9 @@ struct SystemLocation {
     bool has_saved_data;
 };
 
+String pending_json_config = "";
+bool config_update_pending = false;
+
 /* ================= GLOBALS ================= */
 
 uint32_t last_wifi_check = 0;
@@ -64,13 +69,14 @@ uint32_t screenWidth, screenHeight, bufSize;
 lv_display_t *disp;
 lv_color_t *disp_draw_buf;
 
+// Icons handled by UI labels now, keeping pointers null or unused
 lv_obj_t *status_wifi_icon = NULL;
 lv_obj_t *status_mqtt_icon = NULL;
 lv_obj_t *status_batt_icon = NULL;
 
-// Screens
-lv_obj_t *screen_home;
-lv_obj_t *grid_container = NULL;
+// Screens (ui_HomeScreen & ui_SleepScreen are extern in ui.h)
+// lv_obj_t *screen_home; // REPLACED by ui_HomeScreen
+lv_obj_t *grid_container = NULL; // REPLACED by ui_haswC
 lv_obj_t *screen_notifications;
 lv_obj_t *screen_power;
 lv_obj_t *screen_settings_menu; 
@@ -79,6 +85,8 @@ lv_obj_t *screen_wifi;
 lv_obj_t *screen_ha;
 lv_obj_t *screen_time_date;
 lv_obj_t *loader_label = NULL;
+
+extern lv_obj_t *ui_baseP;
 
 // Time Screen Handles (Numpad Version)
 lv_obj_t *kb_time;
@@ -218,6 +226,14 @@ PubSubClient mqtt(wifiClient);
 
 const char* monthNames[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
 
+int getDayOfWeek(int d, int m, int y) {
+    if (m < 3) { m += 12; y -= 1; }
+    int K = y % 100;
+    int J = y / 100;
+    int f = d + 13*(m+1)/5 + K + K/4 + J/4 + 5*J;
+    int res = f % 7;
+    return (res < 0) ? res + 7 : res; 
+}
 
 struct DynamicSwitch {
     char name[16];      // Label (e.g., "Kitchen")
@@ -294,6 +310,12 @@ void refresh_saved_wifi_list_ui();
 void saved_wifi_click_cb(lv_event_t * e);
 void btn_scan_wifi_cb(lv_event_t * e);
 void wifi_list_btn_cb(lv_event_t * e);
+// Forward declaration for display logic
+void update_status_icons();
+void update_weather_ui(weather_type_t type, bool is_night);
+void update_loader_msg(const char* msg);
+void perform_geocoding_search(const char* query);
+int getDayOfWeek(int d, int m, int y);
 
 /* ================= HARDWARE DRIVERS ================= */
 bool gt911_read_touch(uint16_t &x, uint16_t &y) {
@@ -364,7 +386,7 @@ void touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data) {
     was_pressed = false;
     touch_for_wake_only = false; 
   }
-  
+   
   data->point.x = lx; data->point.y = ly;
 }
 
@@ -433,7 +455,7 @@ void add_notification(String msg) {
 
     notification_ui_dirty = true;
 
-    if (lv_scr_act() != ui_uiScreenSleep) {
+    if (lv_scr_act() != ui_SleepScreen) {
         last_touch_ms = millis();
     }
 }
@@ -571,15 +593,11 @@ void reset_grid_to_defaults() {
     prefs.clear(); 
     prefs.end();
 
-    for (int i = 0; i < MAX_BUTTONS; i++) {
-        snprintf(my_switches[i].name, 16, "Unset");
-        snprintf(my_switches[i].entity_id, 64, "none");
-        snprintf(my_switches[i].icon, 8, LV_SYMBOL_PLUS);
-        my_switches[i].state = false;
-    }
+    // Logic now handled by ui_logic.h, clearing preferences is sufficient
     save_grid_config();
-
-    if (screen_home) create_switch_grid(screen_home);
+    
+    // Refresh logic from ui_logic
+    // refresh_ui_data("{}"); // Optional: clear UI
 }
 
 
@@ -677,7 +695,7 @@ void save_ha_settings(const char* h, const char* p_str, const char* u, const cha
   snprintf(mqtt_topic_notify, 64, "%s", topic);
   
   if (en) {
-      show_loader("Connecting MQTT...");       
+      show_loader("Connecting MQTT...");        
 
       mqtt.setServer(mqtt_host, mqtt_port);
       wifiClient.setTimeout(2000); 
@@ -925,39 +943,19 @@ void mqtt_callback(char* topic, byte* payload, unsigned int len) {
     p_buff[len] = '\0';
 
     // 1. HANDLE CONFIGURATION UPDATE
-    if (strcmp(topic, "ha/panel/config/set") == 0) {
-        show_loader("Updating Layout...");
+    // if (strcmp(topic, "ha/panel/config/set") == 0) {
+    //     show_loader("Updating Layout...");
+    //     // Replaced custom parsing with ui_logic.h handler
+    //     refresh_ui_data(p_buff); 
+    //     Serial.println("UI Config Updated via ui_logic");
+    //     hide_loader();
+    // }
 
-        JsonDocument doc;
-        DeserializationError error = deserializeJson(doc, p_buff);
-        
-        if (!error) {
-            JsonArray buttons = doc["buttons"];
-            for (int i = 0; i < buttons.size(); i++) {
-                if (i >= MAX_BUTTONS) break;
-                
-                const char* n = buttons[i]["name"];
-                const char* e = buttons[i]["entity"];
-                const char* ic = buttons[i]["icon"];
-                
-                strncpy(my_switches[i].name, n, 15);
-                strncpy(my_switches[i].entity_id, e, 63);
-                
-                if(strcmp(ic, "light") == 0) strncpy(my_switches[i].icon, LV_SYMBOL_BELL, 7);
-                else if(strcmp(ic, "fan") == 0) strncpy(my_switches[i].icon, LV_SYMBOL_REFRESH, 7);
-                else strncpy(my_switches[i].icon, LV_SYMBOL_POWER, 7);
-            }
-            save_grid_config(); 
-            Serial.println("Config updated. Refreshing UI...");
-            create_switch_grid(screen_home); 
-            if (mqtt.connected()) {
-                 mqtt.publish("ha/panel/sync", "get_states");
-            }
-        } else {
-             Serial.print("JSON Error: ");
-             Serial.println(error.c_str());
-        }
-        hide_loader();
+    if (strcmp(topic, "ha/panel/config/set") == 0) {
+        Serial.println("Config received. Scheduling update...");
+        // DECOUPLED: Save string and set flag. Do NOT call refresh_ui_data here.
+        pending_json_config = String(p_buff); 
+        config_update_pending = true;         
     }
 
     // 2. HANDLE STATE UPDATES FROM HA
@@ -968,15 +966,10 @@ void mqtt_callback(char* topic, byte* payload, unsigned int len) {
         if (!error) {
             const char* id = doc["entity_id"];
             const char* st = doc["state"];
-            
             bool isOn = (strcasecmp(st, "on") == 0) || (strcasecmp(st, "open") == 0);
-
-            for (int i = 0; i < MAX_BUTTONS; i++) {
-                if (strcmp(my_switches[i].entity_id, id) == 0) {
-                    set_button_state_visual(i, isOn);
-                    break; 
-                }
-            }
+            
+            // Call new logic helper instead of manual loop
+            update_device_state(id, isOn); 
         }
     }
 
@@ -1024,7 +1017,8 @@ void swipe_event_cb(lv_event_t *e) {
     
     bool navigated = false;
 
-    if (screen == screen_home) {
+    // Use SquareLine's generated screen variable
+    if (screen == ui_HomeScreen) {
         if (dir == LV_DIR_RIGHT) {
             lv_scr_load_anim(screen_notifications, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 200, 0, false);
             navigated = true;
@@ -1036,13 +1030,13 @@ void swipe_event_cb(lv_event_t *e) {
     }
     else if (screen == screen_notifications) {
         if (dir == LV_DIR_LEFT) {
-            lv_scr_load_anim(screen_home, LV_SCR_LOAD_ANIM_MOVE_LEFT, 200, 0, false);
+            lv_scr_load_anim(ui_HomeScreen, LV_SCR_LOAD_ANIM_MOVE_LEFT, 200, 0, false);
             navigated = true;
         }
     }
     else if (screen == screen_settings_menu) {
         if (dir == LV_DIR_RIGHT) {
-            lv_scr_load_anim(screen_home, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 200, 0, false);
+            lv_scr_load_anim(ui_HomeScreen, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 200, 0, false);
             navigated = true;
         }
     }
@@ -1084,7 +1078,7 @@ void back_event_cb(lv_event_t *e) {
         lv_scr_load_anim(screen_settings_menu, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 200, 0, false);
     } 
     else {
-        lv_scr_load_anim(screen_home, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 200, 0, false);
+        lv_scr_load_anim(ui_HomeScreen, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 200, 0, false);
     }
 }
 
@@ -1348,23 +1342,7 @@ void ta_event_cb(lv_event_t * e) {
 }
 
 void switch_event_cb(lv_event_t *e) {
-    int idx = (intptr_t)lv_event_get_user_data(e);
-    
-    // 1. Toggle Visual Immediately (Optimistic UI)
-    bool newState = !my_switches[idx].state;
-    set_button_state_visual(idx, newState);
-    
-    // 2. Send Command to HA
-    JsonDocument doc;
-    doc["entity_id"] = my_switches[idx].entity_id;
-    doc["action"] = "toggle"; 
-    
-    char buffer[128];
-    serializeJson(doc, buffer);
-    
-    if (mqtt.connected()) {
-        mqtt.publish("ha/panel/command", buffer);
-    }
+    // Legacy function - logic now handled by ui_logic.h events
 }
 
 void settings_menu_event_cb(lv_event_t *e) {
@@ -2056,84 +2034,11 @@ void create_settings_menu_screen(lv_obj_t *parent) {
 }
 
 void set_button_state_visual(int index, bool is_on) {
-    if (index < 0 || index >= MAX_BUTTONS) return;
-    if (!switches[index].btn || !switches[index].label) return;
-
-    // Update internal state
-    my_switches[index].state = is_on;
-
-    if (is_on) {
-        // Active State: Orange Background, White Text
-        lv_obj_set_style_bg_color(switches[index].btn, lv_palette_main(LV_PALETTE_ORANGE), 0);
-        lv_label_set_text(switches[index].label, "ON");
-        lv_obj_set_style_text_color(switches[index].label, lv_color_white(), 0);
-        
-        // Optional: Make icon white too
-        lv_obj_t* icon_label = lv_obj_get_child(switches[index].btn, 0); 
-        if(icon_label) lv_obj_set_style_text_color(icon_label, lv_color_white(), 0);
-        
-    } else {
-        // Inactive State: Grey Background, Black Text
-        lv_obj_set_style_bg_color(switches[index].btn, lv_palette_lighten(LV_PALETTE_GREY, 4), 0);
-        lv_label_set_text(switches[index].label, "OFF");
-        lv_obj_set_style_text_color(switches[index].label, lv_color_black(), 0);
-        
-        // Restore icon color
-        lv_obj_t* icon_label = lv_obj_get_child(switches[index].btn, 0);
-        if(icon_label) lv_obj_set_style_text_color(icon_label, lv_color_black(), 0);
-    }
+    // Legacy function - logic now handled by ui_logic.h
 }
 
 void create_switch_grid(lv_obj_t *parent) {
-    // 1. Prepare the Grid Container
-    if (grid_container != NULL) {
-        // If it exists, just remove all old buttons to redraw
-        lv_obj_clean(grid_container);
-    } else {
-        // If it doesn't exist, create it from scratch
-        static lv_coord_t col_dsc[] = { LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST };
-        static lv_coord_t row_dsc[] = { LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST };
-
-        grid_container = lv_obj_create(parent);
-        lv_obj_set_size(grid_container, 420, 360);
-        lv_obj_align(grid_container, LV_ALIGN_BOTTOM_MID, 0, -30);
-        
-        lv_obj_set_style_bg_opa(grid_container, LV_OPA_TRANSP, 0);
-        lv_obj_set_style_border_width(grid_container, 0, 0);
-        lv_obj_set_style_pad_all(grid_container, 0, 0);
-        lv_obj_clear_flag(grid_container, LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_set_grid_dsc_array(grid_container, col_dsc, row_dsc);
-    }
-
-    // 2. Add the Buttons (using your new my_switches logic)
-    for (int i = 0; i < MAX_BUTTONS; i++) {
-        lv_obj_t *btn = lv_btn_create(grid_container); // Parent is grid_container!
-        lv_obj_set_grid_cell(btn, LV_GRID_ALIGN_STRETCH, i % GRID_COLS, 1, LV_GRID_ALIGN_STRETCH, i / GRID_COLS, 1);
-        
-        // Pass index for event handling
-        lv_obj_add_event_cb(btn, switch_event_cb, LV_EVENT_CLICKED, (void*)(intptr_t)i);
-        
-        // Icon
-        lv_obj_t *icon = lv_label_create(btn); 
-        const char* icon_symbol = (strlen(my_switches[i].icon) > 0) ? my_switches[i].icon : LV_SYMBOL_PLUS;
-        lv_label_set_text(icon, icon_symbol); 
-        lv_obj_align(icon, LV_ALIGN_TOP_MID, 0, 8);
-        
-        // Name
-        lv_obj_t *name = lv_label_create(btn); 
-        const char* label_text = (strlen(my_switches[i].name) > 0) ? my_switches[i].name : "Unset";
-        lv_label_set_text(name, label_text); 
-        lv_obj_align(name, LV_ALIGN_CENTER, 0, 10);
-        
-        // State Label
-        lv_obj_t *label = lv_label_create(btn); 
-        lv_label_set_text(label, "OFF"); 
-        lv_obj_align(label, LV_ALIGN_BOTTOM_MID, 0, -6);
-        
-        // Store pointers if you want to update them later
-        switches[i].btn = btn;
-        switches[i].label = label;
-    }
+    // Legacy function - logic now handled by ui_logic.h
 }
 
 /* ================= TIME & DATE SCREEN ================= */
@@ -2327,7 +2232,7 @@ void sw_auto_loc_cb(lv_event_t * e) {
     } else {
         lv_obj_clear_flag(cont_manual_loc, LV_OBJ_FLAG_HIDDEN);
         sysLoc.is_manual = true;
-        save_location_prefs();         
+        save_location_prefs();          
         String savedStr = "Current: " + String(sysLoc.city) + " (Saved)";
         if(lbl_loc_current) lv_label_set_text(lbl_loc_current, savedStr.c_str());
     }
@@ -2703,7 +2608,7 @@ void fetch_weather_data() {
                         sysLoc.city[31] = '\0';
                     }
                     city_name = String(sysLoc.city);
-                    if (ui_uiLabelCity) lv_label_set_text(ui_uiLabelCity, sysLoc.city);
+                    if (ui_LabelCity) lv_label_set_text(ui_LabelCity, sysLoc.city);
                     Serial.printf("IP Loc Found: %s (%.4f, %.4f)\n", sysLoc.city, geo_lat, geo_lon);
                 }
             } else {
@@ -2713,7 +2618,7 @@ void fetch_weather_data() {
         }
     } else {
         Serial.println("Using Manual Location...");
-        if (ui_uiLabelCity) lv_label_set_text(ui_uiLabelCity, sysLoc.city);
+        if (ui_LabelCity) lv_label_set_text(ui_LabelCity, sysLoc.city);
     }
 
     // ---------------------------------------------
@@ -2798,8 +2703,8 @@ void fetch_weather_data() {
 
                 initial_weather_fetched = true;
 
-                if(ui_uiLabelTemp) lv_label_set_text(ui_uiLabelTemp, (String(current_temp, 0) + "°").c_str());
-                if(ui_uiLabelWeather) lv_label_set_text(ui_uiLabelWeather, get_weather_description(weather_code).c_str());
+                if(ui_LabelTemp) lv_label_set_text(ui_LabelTemp, (String(current_temp, 0) + "°").c_str());
+                if(ui_LabelWeather) lv_label_set_text(ui_LabelWeather, get_weather_description(weather_code).c_str());
                 
                 update_weather_ui(get_weather_type(weather_code), (is_day == 0));
             } else {
@@ -2814,10 +2719,20 @@ void fetch_weather_data() {
 }
 
 void update_weather_ui(weather_type_t type, bool is_night) {
-    
-    if (ui_uiScreenSleep == NULL || ui_uiIconWeather == NULL) return;
 
-    lv_obj_clear_flag(ui_uiIconWeather, LV_OBJ_FLAG_HIDDEN);
+    if (ui_baseP) {
+        if (is_night) {
+            // Night Background
+            lv_obj_set_style_bg_image_src(ui_baseP, &ui_img_bg_bg6rc2_png, LV_PART_MAIN | LV_STATE_DEFAULT);
+        } else {
+            // Day Background
+            lv_obj_set_style_bg_image_src(ui_baseP, &ui_img_bg_bg3rc2_png, LV_PART_MAIN | LV_STATE_DEFAULT);
+        }
+    }
+    
+    if (ui_SleepScreen == NULL || ui_IconWeather == NULL) return;
+
+    lv_obj_clear_flag(ui_IconWeather, LV_OBJ_FLAG_HIDDEN);
 
     const void * new_bg = NULL;
     const void * new_icon = NULL;
@@ -2873,15 +2788,21 @@ void update_weather_ui(weather_type_t type, bool is_night) {
                 new_bg = &ui_img_scenes_cloud_night_png; 
                 new_icon = &ui_img_weather_night_fog_png;
             } else {
-                new_bg = &ui_img_scenes_cloud_day_png;   
+                new_bg = &ui_img_scenes_cloud_day_png;    
                 new_icon = &ui_img_weather_day_fog_png;
             }
             break;
             
         default: return; 
     }
-    if (ui_uiImgBg) lv_image_set_src(ui_uiImgBg, new_bg);
-    lv_obj_set_style_bg_image_src(ui_uiIconWeather, new_icon, LV_PART_MAIN | LV_STATE_DEFAULT);
+
+    if (ui_ImgBg && new_bg) {
+        lv_img_set_src(ui_ImgBg, new_bg);
+    }
+    
+    if (ui_IconWeather && new_icon) {
+        lv_img_set_src(ui_IconWeather, new_icon);
+    }
 }
 
 void show_loader(const char* msg) {
@@ -3001,47 +2922,34 @@ void setup() {
 
     load_settings(); 
 
-    screen_home = lv_obj_create(NULL);
-    lv_obj_set_style_bg_color(screen_home, lv_color_white(), 0);
+    // --- INIT UI ---
+
     
-    screen_notifications = lv_obj_create(NULL);
-    screen_power = lv_obj_create(NULL);
-    screen_settings_menu = lv_obj_create(NULL);
-    screen_about = lv_obj_create(NULL);
-    screen_wifi = lv_obj_create(NULL);
-    screen_ha = lv_obj_create(NULL);
-    screen_time_date = lv_obj_create(NULL);
-    screen_location = lv_obj_create(NULL);
-    screen_display = lv_obj_create(NULL);
+    ui_init(); 
+    setup_ui_logic(); 
 
-    create_switch_grid(screen_home);
-    create_page_dots(screen_home, 1);
+    // Create Manual Screens
+    screen_notifications = lv_obj_create(NULL); create_notifications_page(screen_notifications);
+    screen_settings_menu = lv_obj_create(NULL); create_settings_menu_screen(screen_settings_menu);
+    screen_power = lv_obj_create(NULL); create_power_screen(screen_power);
+    screen_wifi = lv_obj_create(NULL); create_wifi_screen(screen_wifi);
+    screen_ha = lv_obj_create(NULL); create_ha_screen(screen_ha);
+    screen_about = lv_obj_create(NULL); create_about_screen(screen_about);
+    screen_time_date = lv_obj_create(NULL); create_time_date_screen(screen_time_date);
+    screen_location = lv_obj_create(NULL); create_location_screen(screen_location);
+    screen_display = lv_obj_create(NULL); create_display_screen(screen_display);
 
-    create_notifications_page(screen_notifications);
-    create_power_screen(screen_power);
-    create_settings_menu_screen(screen_settings_menu); 
-    create_wifi_screen(screen_wifi);
-    create_ha_screen(screen_ha); 
-    create_about_screen(screen_about);
-    create_time_date_screen(screen_time_date);
-    create_location_screen(screen_location);
-    create_display_screen(screen_display);
-
-    ui_init();
-
-    if (ui_uiIconWeather != NULL) {
-        lv_obj_add_flag(ui_uiIconWeather, LV_OBJ_FLAG_HIDDEN);
+    if (ui_IconWeather != NULL) {
+        lv_obj_add_flag(ui_IconWeather, LV_OBJ_FLAG_HIDDEN);
     }
 
-    lv_obj_add_event_cb(screen_home, swipe_event_cb, LV_EVENT_GESTURE, NULL);
+    lv_obj_add_event_cb(ui_HomeScreen, swipe_event_cb, LV_EVENT_GESTURE, NULL);
     lv_obj_add_event_cb(screen_notifications, swipe_event_cb, LV_EVENT_GESTURE, NULL);
     lv_obj_add_event_cb(screen_settings_menu, swipe_event_cb, LV_EVENT_GESTURE, NULL);
 
-    lv_scr_load(screen_home);
-    clock_label = lv_label_create(screen_home);
-    lv_obj_set_style_text_color(clock_label, lv_color_black(), 0);
-    lv_obj_set_style_text_font(clock_label, &lv_font_montserrat_24, 0); 
-    lv_obj_align(clock_label, LV_ALIGN_TOP_MID, 0, 10);
+    lv_scr_load(ui_HomeScreen);
+    // Note: clock_label is legacy, replaced by ui_time in handle_clock_update
+    // clock_label = lv_label_create(ui_HomeScreen); ...
 
     configTime(sysLoc.utc_offset, 0, "pool.ntp.org", "time.nist.gov");
     if (!rtc.begin(Wire, 47, 48)) { rtc.begin(Wire, 47, 48); }
@@ -3108,96 +3016,150 @@ void handle_clock_update() {
         
         if (lv_scr_act() == screen_about) update_about_text();
         
-        int h = dt.getHour();
-        const char* ampm = (h >= 12) ? "PM" : "AM";
-        if (h == 0) h = 12; else if (h > 12) h -= 12;
-        int m = dt.getMonth(); if (m < 1) m = 1; if (m > 12) m = 12;
+        // 1. Update HOME SCREEN Text
+        if (ui_time) { 
+            char buf[10]; snprintf(buf, sizeof(buf), "%02d:%02d", dt.getHour(), dt.getMinute());
+            lv_label_set_text(ui_time, buf);
+        }
+        if (ui_date) { 
+             const char* days[] = {"Sat", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri"};
+             char buf[32];
+             int wd = getDayOfWeek(dt.getDay(), dt.getMonth(), dt.getYear());
+             snprintf(buf, sizeof(buf), "%s, %02d/%02d", days[wd], dt.getDay(), dt.getMonth());
+             lv_label_set_text(ui_date, buf);
+        }
+        
+        // Update Home Screen Weather Text
+        if (ui_temp) lv_label_set_text(ui_temp, (String(current_temp, 0) + "°").c_str());
+        if (ui_loc) lv_label_set_text(ui_loc, sysLoc.city);
+        if (ui_cli) lv_label_set_text(ui_cli, get_weather_description(weather_code).c_str());
 
-        char buf[20], buf_sleep[20], date[20];
-        snprintf(buf, sizeof(buf), "%02d:%02d %s", h, dt.getMinute(), ampm);
-        snprintf(buf_sleep, sizeof(buf_sleep), "%02d:%02d", h, dt.getMinute()); 
-        snprintf(date, sizeof(date), "%02d %s %04d", dt.getDay(), monthNames[m-1], dt.getYear());
+        // 2. Update SLEEP SCREEN Text
+        if (ui_SleepScreen) {
+            int h = dt.getHour();
+            const char* ampm = (h >= 12) ? "PM" : "AM";
+            if (h == 0) h = 12; else if (h > 12) h -= 12;
+            int m = dt.getMonth(); if (m < 1) m = 1; if (m > 12) m = 12;
 
-        if(clock_label) lv_label_set_text(clock_label, buf);
+            char buf[20], buf_sleep[20], date[20];
+            snprintf(buf, sizeof(buf), "%02d:%02d %s", h, dt.getMinute(), ampm);
+            snprintf(buf_sleep, sizeof(buf_sleep), "%02d:%02d", h, dt.getMinute()); 
+            snprintf(date, sizeof(date), "%02d %s %04d", dt.getDay(), monthNames[m-1], dt.getYear());
 
-        if (ui_uiScreenSleep) {
-            if(ui_uiLabelTime) lv_label_set_text(ui_uiLabelTime, buf_sleep);
-            if(ui_uiLabelDate) lv_label_set_text(ui_uiLabelDate, date);
-
-            if (initial_weather_fetched) {
-                String bigTempStr = String(current_temp, 0) + "°";
-                lv_label_set_text(ui_uiLabelTemp, bigTempStr.c_str());
+            if(ui_LabelTime) lv_label_set_text(ui_LabelTime, buf_sleep);
+            if(ui_LabelDate) lv_label_set_text(ui_LabelDate, date);
+            
+            if(ui_LabelTemp) {
+                 String t = String(current_temp, 0) + "°";
+                 lv_label_set_text(ui_LabelTemp, t.c_str());
+            }
+            if(ui_LabelCity) {
+                 lv_label_set_text(ui_LabelCity, sysLoc.city);
             }
             
             // Handle Alerts Badge
             int count = get_notification_count();
-            lv_obj_t* notify_chip = (lv_obj_t*)lv_obj_get_user_data(ui_uiPanelAlertsLabel);
-
-            if (ui_uiPanelAlertsLabel != NULL) {
+            if (ui_AlertsLabel != NULL) {
                 if (count > 0) {
-                    lv_obj_clear_flag(ui_uiPanelAlertsLabel, LV_OBJ_FLAG_HIDDEN);
+                    lv_obj_clear_flag(ui_AlertsLabel, LV_OBJ_FLAG_HIDDEN);
                     String n = String(LV_SYMBOL_BELL) + "  " + String(count) + " Alerts";
-                    lv_label_set_text(ui_uiPanelAlertsLabel, n.c_str());
+                    lv_label_set_text(ui_AlertsLabel, n.c_str());
                 } else {
-                    lv_obj_add_flag(ui_uiPanelAlertsLabel, LV_OBJ_FLAG_HIDDEN);
+                    lv_obj_add_flag(ui_AlertsLabel, LV_OBJ_FLAG_HIDDEN);
                 }
             }
-            
-            // Handle Icons (WiFi/MQTT/Bat)
-            update_status_icons(); 
         }
+        
+        // 3. Update Icons for BOTH screens using shared logic
+        update_status_icons(); 
     }
 }
 
 void update_status_icons() {
     // WiFi Icon
-    if (ui_uiIconWifi != NULL) {
-        if(current_wifi_state == WIFI_CONNECTED) lv_obj_set_style_text_color(ui_uiIconWifi, lv_color_white(), 0);
-        else if (current_wifi_state == WIFI_CONNECTING) lv_obj_set_style_text_color(ui_uiIconWifi, lv_palette_main(LV_PALETTE_ORANGE), 0);
-        else lv_obj_set_style_text_color(ui_uiIconWifi, lv_palette_main(LV_PALETTE_RED), 0);
+    if (ui_IconWifi != NULL) {
+        if(current_wifi_state == WIFI_CONNECTED) {
+            lv_obj_set_style_text_color(ui_IconWifi, lv_color_white(), 0);
+            lv_obj_set_style_text_color(ui_wifi, lv_color_white(), 0);
+        }
+        else if (current_wifi_state == WIFI_CONNECTING) {
+            lv_obj_set_style_text_color(ui_IconWifi, lv_palette_main(LV_PALETTE_ORANGE), 0);
+            lv_obj_set_style_text_color(ui_wifi, lv_palette_main(LV_PALETTE_ORANGE), 0);
+        }
+        else {
+            lv_obj_set_style_text_color(ui_IconWifi, lv_palette_main(LV_PALETTE_RED), 0);
+            lv_obj_set_style_text_color(ui_wifi, lv_palette_main(LV_PALETTE_RED), 0);
+        }
     }
     // MQTT Icon
-    if (ui_uiIconMqtt != NULL) {
-        if (mqtt_enabled && mqtt.connected()) lv_obj_set_style_text_color(ui_uiIconMqtt, lv_color_white(), 0);
-        else if (mqtt_enabled) lv_obj_set_style_text_color(ui_uiIconMqtt, lv_palette_main(LV_PALETTE_ORANGE), 0);
-        else lv_obj_set_style_text_color(ui_uiIconMqtt, lv_palette_main(LV_PALETTE_RED), 0);
+    if (ui_IconMqtt != NULL) {
+        if (mqtt_enabled && mqtt.connected()) {
+            lv_obj_set_style_text_color(ui_IconMqtt, lv_color_white(), 0);
+            lv_obj_set_style_text_color(ui_mqtt, lv_color_white(), 0);
+        } else if (mqtt_enabled) {
+            lv_obj_set_style_text_color(ui_IconMqtt, lv_palette_main(LV_PALETTE_ORANGE), 0);
+            lv_obj_set_style_text_color(ui_mqtt, lv_palette_main(LV_PALETTE_ORANGE), 0);
+        } else {
+            lv_obj_set_style_text_color(ui_IconMqtt, lv_palette_main(LV_PALETTE_RED), 0);
+            lv_obj_set_style_text_color(ui_mqtt, lv_palette_main(LV_PALETTE_RED), 0);
+        }
     }
     // Battery Icon
-    if (ui_uiIconBat != NULL) {
+    if (ui_IconBat != NULL) {
         if (power.isBatteryConnect()) {
             int pct = power.getBatteryPercent();
             String batText = "";
             if (pct > 95) {
-                lv_obj_set_style_text_color(ui_uiIconBat, lv_color_white(), 0);
+                lv_obj_set_style_text_color(ui_IconBat, lv_color_white(), 0);
+                lv_obj_set_style_text_color(ui_batt, lv_color_white(), 0);
                 batText = String(LV_SYMBOL_BATTERY_FULL);
             }
             else if (pct > 70 && pct <= 95) {
-                lv_obj_set_style_text_color(ui_uiIconBat, lv_color_white(), 0);
+                lv_obj_set_style_text_color(ui_IconBat, lv_color_white(), 0);
+                lv_obj_set_style_text_color(ui_batt, lv_color_white(), 0);
                 batText = String(LV_SYMBOL_BATTERY_3);
             }
             else if (pct > 40 && pct <= 70) {
-                lv_obj_set_style_text_color(ui_uiIconBat, lv_color_white(), 0);
+                lv_obj_set_style_text_color(ui_IconBat, lv_color_white(), 0);
+                lv_obj_set_style_text_color(ui_batt, lv_color_white(), 0);
                 batText = String(LV_SYMBOL_BATTERY_2);
             }
             else if (pct > 15 && pct <= 40) {
-                lv_obj_set_style_text_color(ui_uiIconBat, lv_palette_main(LV_PALETTE_YELLOW), 0);
+                lv_obj_set_style_text_color(ui_IconBat, lv_palette_main(LV_PALETTE_YELLOW), 0);
+                lv_obj_set_style_text_color(ui_batt, lv_palette_main(LV_PALETTE_YELLOW), 0);
                 batText = String(LV_SYMBOL_BATTERY_1);
             }
             else if (pct > 5 && pct <= 15) {
-                lv_obj_set_style_text_color(ui_uiIconBat, lv_palette_main(LV_PALETTE_RED), 0);
+                lv_obj_set_style_text_color(ui_IconBat, lv_palette_main(LV_PALETTE_RED), 0);
+                lv_obj_set_style_text_color(ui_batt, lv_palette_main(LV_PALETTE_RED), 0);
                 batText = String(LV_SYMBOL_BATTERY_1);
             } else {
-                lv_obj_set_style_text_color(ui_uiIconBat, lv_palette_main(LV_PALETTE_RED), 0);
+                lv_obj_set_style_text_color(ui_IconBat, lv_palette_main(LV_PALETTE_RED), 0);
+                lv_obj_set_style_text_color(ui_batt, lv_palette_main(LV_PALETTE_RED), 0);
                 batText = String(LV_SYMBOL_BATTERY_EMPTY);
             }
             if(power.isCharging()) {
-                lv_obj_set_style_text_color(ui_uiIconBat, lv_palette_main(LV_PALETTE_YELLOW), 0);
+                lv_obj_set_style_text_color(ui_IconBat, lv_palette_main(LV_PALETTE_YELLOW), 0);
+                lv_obj_set_style_text_color(ui_batt, lv_palette_main(LV_PALETTE_YELLOW), 0);
                 batText = String(LV_SYMBOL_CHARGE);
             }
-            lv_label_set_text(ui_uiIconBat, batText.c_str());
+            lv_label_set_text(ui_IconBat, batText.c_str());
+            lv_label_set_text(ui_batt, batText.c_str());
         } else {
-            lv_obj_set_style_text_color(ui_uiIconBat, lv_color_white(), 0);
-            lv_label_set_text(ui_uiIconBat, LV_SYMBOL_USB);
+            lv_obj_set_style_text_color(ui_IconBat, lv_color_white(), 0);
+            lv_obj_set_style_text_color(ui_batt, lv_color_white(), 0);
+            lv_label_set_text(ui_IconBat, LV_SYMBOL_USB);
+            lv_label_set_text(ui_batt, LV_SYMBOL_USB);
+        }
+    }
+
+    // --- NEW: Update Bell Icon Color ---
+    int count = get_notification_count();
+    if (ui_bell) {
+        if (count > 0) {
+            lv_obj_set_style_text_color(ui_bell, lv_palette_main(LV_PALETTE_ORANGE), 0);
+        } else {
+            lv_obj_set_style_text_color(ui_bell, lv_color_white(), 0);
         }
     }
 }
@@ -3206,36 +3168,31 @@ void handle_display_state() {
     unsigned long now = millis();
     unsigned long diff = (now >= last_touch_ms) ? (now - last_touch_ms) : 0;
 
-    // 1. DEEP SLEEP
+    // SLEEP
     if (setting_sleep_ms > 0 && diff > setting_sleep_ms) {
         if (!is_backlight_off) {
-            Serial.println(">>> SLEEP (OFF) <<<");
             ledcWrite(LCD_BL_PIN, 255); 
-            is_backlight_off = true;      
-            screensaver_force_bright = false;
+            is_backlight_off = true;
         }
-        if (lv_scr_act() != ui_uiScreenSleep && ui_uiScreenSleep != NULL) lv_scr_load(ui_uiScreenSleep); 
+        // FIX: Use ui_SleepScreen
+        if (ui_SleepScreen && lv_scr_act() != ui_SleepScreen) lv_scr_load(ui_SleepScreen); 
     }
-    // 2. SCREENSAVER
+    // SCREENSAVER
     else if (setting_saver_ms > 0 && diff > setting_saver_ms) {
         is_backlight_off = false; 
-        if (lv_scr_act() != ui_uiScreenSleep && ui_uiScreenSleep != NULL) {
-            Serial.println(">>> SCREENSAVER <<<");
-            lv_scr_load(ui_uiScreenSleep); 
+        if (ui_SleepScreen && lv_scr_act() != ui_SleepScreen) {
+            lv_scr_load(ui_SleepScreen); 
         }
-        set_brightness(screensaver_force_bright ? setting_brightness : 0);
+        set_brightness(50); 
     }
-    // 3. ACTIVE
+    // ACTIVE
     else {
-        if (is_backlight_off || lv_scr_act() == ui_uiScreenSleep) {
-            Serial.println(">>> WAKE <<<");
-            lv_scr_load(screen_home); 
-            lv_indev_wait_release(lv_indev_get_act());
+        if (is_backlight_off || (ui_SleepScreen && lv_scr_act() == ui_SleepScreen)) {
+            lv_scr_load(ui_HomeScreen); 
             if(msg_popup) { lv_obj_del(msg_popup); msg_popup = NULL; }
         }
         set_brightness(setting_brightness); 
         is_backlight_off = false;
-        screensaver_force_bright = false;
     }
 }
 
@@ -3515,6 +3472,14 @@ void update_power_screen_ui() {
 void loop() {
     lv_timer_handler();
     delay(5);
+
+    // --- NEW: Handle UI Updates safely in main loop ---
+    if (config_update_pending) {
+        // Now it's safe to allocate memory and build UI
+        refresh_ui_data(pending_json_config.c_str());
+        pending_json_config = ""; // Clear memory
+        config_update_pending = false;
+    }
 
     // 1. Weather/Time Sync Trigger
     if (trigger_weather_update) {
