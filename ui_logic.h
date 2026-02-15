@@ -48,7 +48,6 @@ void update_switch_visuals(lv_obj_t* sw_comp) {
 }
 
 void on_switch_toggle(lv_event_t* e) {
-    // FIX: Added (lv_obj_t*) cast
     lv_obj_t* btn = (lv_obj_t*)lv_event_get_target(e);
     bool is_on = lv_obj_has_state(btn, LV_STATE_CHECKED);
     update_switch_visuals(btn);
@@ -82,7 +81,6 @@ void apply_switch_filter() {
 }
 
 void on_room_click(lv_event_t* e) {
-    // FIX: Added (lv_obj_t*) cast
     lv_obj_t* clicked_chip = (lv_obj_t*)lv_event_get_target(e);
     if (!ui_rmC) return;
 
@@ -92,11 +90,16 @@ void on_room_click(lv_event_t* e) {
         if (chip == clicked_chip) {
             lv_obj_add_state(chip, LV_STATE_CHECKED);
             lv_obj_set_style_bg_color(chip, lv_color_hex(COLOR_BLUE_ACTIVE), LV_PART_MAIN);
+            
+            // FIX: Ensure border remains removed when active
+            lv_obj_set_style_border_width(chip, 0, LV_PART_MAIN);
+            
             lv_obj_t* label = ui_comp_get_child(chip, UI_COMP_COMPROOM_RMT1);
             if (label) current_room_filter = String(lv_label_get_text(label));
         } else {
             lv_obj_clear_state(chip, LV_STATE_CHECKED);
             lv_obj_set_style_bg_color(chip, lv_color_hex(COLOR_BLACK_BG), LV_PART_MAIN);
+            lv_obj_set_style_border_width(chip, 0, LV_PART_MAIN);
         }
     }
     apply_switch_filter();
@@ -104,7 +107,6 @@ void on_room_click(lv_event_t* e) {
 
 void on_arrow_click(lv_event_t* e) {
     if (!ui_rmC) return;
-    // FIX: Using scroll_right to check overflow
     if (lv_obj_get_scroll_right(ui_rmC) < 5) lv_obj_scroll_to_x(ui_rmC, 0, LV_ANIM_ON);
     else lv_obj_scroll_by(ui_rmC, 100, 0, LV_ANIM_ON);
 }
@@ -155,16 +157,32 @@ void refresh_ui_data(const char* json_payload) {
         lv_obj_t* chip = ui_CompRoom_create(ui_rmC);
         lv_label_set_text(ui_comp_get_child(chip, UI_COMP_COMPROOM_RMT1), r.c_str());
         
+        // >>> THE FIX: Remove border/shadow from ALL states <<<
+        // This effectively "resets" the style for this object to be flat
+        lv_obj_set_style_border_width(chip, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+        lv_obj_set_style_border_width(chip, 0, LV_PART_MAIN | LV_STATE_CHECKED);
+        lv_obj_set_style_border_width(chip, 0, LV_PART_MAIN | LV_STATE_FOCUSED);
+        lv_obj_set_style_border_width(chip, 0, LV_PART_MAIN | LV_STATE_FOCUS_KEY);
+        lv_obj_set_style_shadow_width(chip, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+        
+        // Also force the radius if the theme is overriding it
+        lv_obj_set_style_radius(chip, 24, LV_PART_MAIN | LV_STATE_DEFAULT); 
+        lv_obj_set_style_radius(chip, 24, LV_PART_MAIN | LV_STATE_CHECKED);
+
         if (r == current_room_filter) {
             lv_obj_add_state(chip, LV_STATE_CHECKED);
-            lv_obj_set_style_bg_color(chip, lv_color_hex(COLOR_BLUE_ACTIVE), LV_PART_MAIN);
+            lv_obj_set_style_bg_color(chip, lv_color_hex(COLOR_BLUE_ACTIVE), LV_PART_MAIN | LV_STATE_CHECKED);
+            // Force text color for checked state
+            lv_obj_t* lbl = ui_comp_get_child(chip, UI_COMP_COMPROOM_RMT1);
+            if(lbl) lv_obj_set_style_text_color(lbl, lv_color_white(), LV_PART_MAIN);
         } else {
-            lv_obj_set_style_bg_color(chip, lv_color_hex(COLOR_BLACK_BG), LV_PART_MAIN);
+            lv_obj_clear_state(chip, LV_STATE_CHECKED);
+            lv_obj_set_style_bg_color(chip, lv_color_hex(COLOR_BLACK_BG), LV_PART_MAIN | LV_STATE_DEFAULT);
         }
         lv_obj_add_event_cb(chip, on_room_click, LV_EVENT_CLICKED, NULL);
     }
     
-    // FIX: Correct Arrow Visibility Logic
+    // --- 3. HANDLE ARROW VISIBILITY ---
     lv_obj_update_layout(ui_rmC);
     if (ui_rmPe) {
         if (lv_obj_get_scroll_right(ui_rmC) > 5 || lv_obj_get_scroll_x(ui_rmC) > 5) {
