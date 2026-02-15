@@ -134,19 +134,14 @@ void on_room_click(lv_event_t* e) {
 void on_arrow_click(lv_event_t* e) {
     if (!ui_rmC || !ui_rmPe) return;
     
-    // Check if there is more content to the right
     if (lv_obj_get_scroll_right(ui_rmC) > 5) {
-        // SCROLL TO END (Show Hidden List)
+        // Scroll to end
         lv_coord_t max_x = lv_obj_get_scroll_x(ui_rmC) + lv_obj_get_scroll_right(ui_rmC);
         lv_obj_scroll_to_x(ui_rmC, max_x, LV_ANIM_ON);
-        
-        // Flip Arrow (180 deg) around CENTER pivot
         lv_obj_set_style_transform_angle(ui_rmPe, 1800, 0); 
     } else {
-        // SCROLL TO START (Go Back)
+        // Scroll to start
         lv_obj_scroll_to_x(ui_rmC, 0, LV_ANIM_ON);
-        
-        // Reset Arrow (0 deg)
         lv_obj_set_style_transform_angle(ui_rmPe, 0, 0);
     }
 }
@@ -178,33 +173,32 @@ void refresh_ui_data(const char* json_payload) {
     }
     lv_obj_clean(ui_rmC);
 
-    // --- CHECK FOR EMPTY DATA ---
     if (buttons.isNull() || buttons.size() == 0) {
+        // --- EMPTY STATE ---
         lv_obj_clear_flag(ui_haswCnd, LV_OBJ_FLAG_HIDDEN); // Show "No Data"
         lv_obj_add_flag(ui_haswC, LV_OBJ_FLAG_HIDDEN);     // Hide Grid
         
-        // ** FIX: Explicitly Hide Rooms and Arrow when empty **
+        // Hide Navigation Elements
         if(ui_rmC) lv_obj_add_flag(ui_rmC, LV_OBJ_FLAG_HIDDEN);
         if(ui_rmPe) lv_obj_add_flag(ui_rmPe, LV_OBJ_FLAG_HIDDEN);
         
         delete doc; 
-        return; // Stop here
+        return;
     } else {
         // --- DATA EXISTS ---
         lv_obj_add_flag(ui_haswCnd, LV_OBJ_FLAG_HIDDEN);   // Hide "No Data"
         lv_obj_clear_flag(ui_haswC, LV_OBJ_FLAG_HIDDEN);   // Show Grid
         
-        // ** FIX: Un-hide Rooms when data exists **
+        // Show Navigation Elements
         if(ui_rmC) lv_obj_clear_flag(ui_rmC, LV_OBJ_FLAG_HIDDEN);
+        // Arrow visibility is determined later by overflow check
         
-        // Grid Config
         lv_obj_set_flex_flow(ui_haswC, LV_FLEX_FLOW_ROW_WRAP);
         lv_obj_set_flex_align(ui_haswC, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
         lv_obj_set_style_pad_row(ui_haswC, 10, 0);
         lv_obj_set_style_pad_column(ui_haswC, 10, 0);
         lv_obj_set_style_pad_all(ui_haswC, 0, 0);
         
-        // Room List Spacing
         lv_obj_set_style_pad_column(ui_rmC, 10, 0); 
     }
 
@@ -285,6 +279,7 @@ void refresh_ui_data(const char* json_payload) {
         lv_obj_set_style_text_font(lbl_r, &lv_font_montserrat_12, LV_PART_MAIN);
         lv_obj_clear_flag(lbl_r, LV_OBJ_FLAG_CLICKABLE);
 
+        // INITIAL STATE LOGIC
         bool is_on = (strcasecmp(state, "ON") == 0);
         if (is_on) lv_obj_add_state(sw_btn, LV_STATE_CHECKED);
         update_manual_switch_visuals(sw_btn, is_on);
@@ -340,29 +335,31 @@ void refresh_ui_data(const char* json_payload) {
     }
     
     // --- ARROW LOGIC ---
-    // Fix: Remove Border from Arrow
-    if(ui_rmPe) lv_obj_set_style_border_width(ui_rmPe, 0, LV_PART_MAIN); 
-    if(ui_rmPe) lv_obj_set_style_transform_angle(ui_rmPe, 0, 0); 
+    if(ui_rmPe) {
+        lv_obj_set_style_border_width(ui_rmPe, 0, LV_PART_MAIN); 
+        lv_obj_set_style_transform_angle(ui_rmPe, 0, 0); 
+    }
 
     lv_obj_update_layout(ui_rmC);
     lv_obj_scroll_to_x(ui_rmC, 0, LV_ANIM_OFF);
     
-    // Visibility based on overflow
     if (lv_obj_get_scroll_right(ui_rmC) > 0) {
         lv_obj_clear_flag(ui_rmPe, LV_OBJ_FLAG_HIDDEN);
     } else {
         lv_obj_add_flag(ui_rmPe, LV_OBJ_FLAG_HIDDEN);
     }
 
-    Serial.println("UI: Build Complete.");
-    delete doc; 
+    Serial.println("UI: Build Complete. Requesting Sync...");
+    delete doc;
+    
+    // ** FORCE STATE SYNC AFTER BUILD **
+    if (mqtt.connected()) mqtt.publish("ha/panel/sync", "get_states");
 }
 
 // --- INIT HELPER TO SET PIVOT ---
 void setup_ui_logic() {
     if(ui_rmPe) {
         lv_obj_add_event_cb(ui_rmPe, on_arrow_click, LV_EVENT_CLICKED, NULL);
-        // ** FIX: Set Rotation Pivot to Center (50% of width/height) **
         lv_obj_set_style_transform_pivot_x(ui_rmPe, LV_PCT(50), 0);
         lv_obj_set_style_transform_pivot_y(ui_rmPe, LV_PCT(50), 0);
     }
