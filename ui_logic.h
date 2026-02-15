@@ -19,7 +19,7 @@ extern void show_notification_popup(const char* text, int index);
 #define SW_WIDTH   205 
 #define SW_HEIGHT  70
 
-String current_room_filter = "All"; 
+String current_room_filter = "My Home"; 
 bool is_first_ui_update = true;
 
 // --- ICON MAPPING ---
@@ -107,7 +107,7 @@ void apply_switch_filter() {
         
         String room = String(lv_label_get_text(room_lbl));
         
-        if (current_room_filter == "All" || room == current_room_filter) {
+        if (current_room_filter == "My Home" || room == current_room_filter) {
             lv_obj_clear_flag(btn, LV_OBJ_FLAG_HIDDEN);
         } else {
             lv_obj_add_flag(btn, LV_OBJ_FLAG_HIDDEN);
@@ -191,7 +191,7 @@ void refresh_ui_data(const char* json_payload) {
 
     const int MAX_ROOMS = 10;
     char room_list[MAX_ROOMS][32]; 
-    strcpy(room_list[0], "All");
+    strcpy(room_list[0], "My Home");
     int room_count = 1;
 
     // --- MANUAL SWITCH CREATION ---
