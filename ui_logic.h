@@ -178,13 +178,24 @@ void refresh_ui_data(const char* json_payload) {
     }
     lv_obj_clean(ui_rmC);
 
+    // --- CHECK FOR EMPTY DATA ---
     if (buttons.isNull() || buttons.size() == 0) {
-        lv_obj_clear_flag(ui_haswCnd, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(ui_haswC, LV_OBJ_FLAG_HIDDEN);
-        delete doc; return;
+        lv_obj_clear_flag(ui_haswCnd, LV_OBJ_FLAG_HIDDEN); // Show "No Data"
+        lv_obj_add_flag(ui_haswC, LV_OBJ_FLAG_HIDDEN);     // Hide Grid
+        
+        // ** FIX: Explicitly Hide Rooms and Arrow when empty **
+        if(ui_rmC) lv_obj_add_flag(ui_rmC, LV_OBJ_FLAG_HIDDEN);
+        if(ui_rmPe) lv_obj_add_flag(ui_rmPe, LV_OBJ_FLAG_HIDDEN);
+        
+        delete doc; 
+        return; // Stop here
     } else {
-        lv_obj_add_flag(ui_haswCnd, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_clear_flag(ui_haswC, LV_OBJ_FLAG_HIDDEN);
+        // --- DATA EXISTS ---
+        lv_obj_add_flag(ui_haswCnd, LV_OBJ_FLAG_HIDDEN);   // Hide "No Data"
+        lv_obj_clear_flag(ui_haswC, LV_OBJ_FLAG_HIDDEN);   // Show Grid
+        
+        // ** FIX: Un-hide Rooms when data exists **
+        if(ui_rmC) lv_obj_clear_flag(ui_rmC, LV_OBJ_FLAG_HIDDEN);
         
         // Grid Config
         lv_obj_set_flex_flow(ui_haswC, LV_FLEX_FLOW_ROW_WRAP);
@@ -336,7 +347,7 @@ void refresh_ui_data(const char* json_payload) {
     lv_obj_update_layout(ui_rmC);
     lv_obj_scroll_to_x(ui_rmC, 0, LV_ANIM_OFF);
     
-    // Visibility
+    // Visibility based on overflow
     if (lv_obj_get_scroll_right(ui_rmC) > 0) {
         lv_obj_clear_flag(ui_rmPe, LV_OBJ_FLAG_HIDDEN);
     } else {
