@@ -9,9 +9,9 @@ extern PubSubClient mqtt;
 extern void show_notification_popup(const char* text, int index);
 
 // --- VISUAL CONSTANTS ---
-#define COLOR_ACTIVE_YELLOW  0xFEC106  // Active Background
-#define COLOR_INACTIVE_GREY  0xD6D6D6  // Inactive Icon Color
-#define COLOR_BG_BLACK       0x000000  // Inactive Background
+#define COLOR_ACTIVE_YELLOW  0xFEC106  
+#define COLOR_INACTIVE_GREY  0xD6D6D6  
+#define COLOR_BG_BLACK       0x000000  
 #define COLOR_TEXT_WHITE     0xFFFFFF
 #define COLOR_BLUE_ACTIVE    0x28A0FB
 
@@ -42,24 +42,17 @@ const void* get_icon_by_name(const char* icon_name) {
 // --- UPDATE STYLES (Toggle Logic) ---
 void update_manual_switch_visuals(lv_obj_t* btn, bool is_on) {
     if (lv_obj_get_child_cnt(btn) < 1) return;
-
-    // Child 0 is the Icon Container
     lv_obj_t* icon_cont = lv_obj_get_child(btn, 0);
-    // Child 0 of Icon Container is the Image
     lv_obj_t* icon_img = (lv_obj_get_child_cnt(icon_cont) > 0) ? lv_obj_get_child(icon_cont, 0) : NULL;
 
     if (is_on) {
-        // ACTIVE: Yellow Circle, Black Icon
         lv_obj_set_style_bg_color(icon_cont, lv_color_hex(COLOR_ACTIVE_YELLOW), LV_PART_MAIN);
-        
         if(icon_img) {
             lv_obj_set_style_img_recolor(icon_img, lv_color_hex(COLOR_ACTIVE_YELLOW), LV_PART_MAIN);
             lv_obj_set_style_img_recolor_opa(icon_img, 255, LV_PART_MAIN);
         }
     } else {
-        // INACTIVE: Black Circle, Grey Icon
         lv_obj_set_style_bg_color(icon_cont, lv_color_hex(COLOR_BG_BLACK), LV_PART_MAIN);
-        
         if(icon_img) {
             lv_obj_set_style_img_recolor(icon_img, lv_color_hex(COLOR_INACTIVE_GREY), LV_PART_MAIN); 
             lv_obj_set_style_img_recolor_opa(icon_img, 255, LV_PART_MAIN);
@@ -67,7 +60,7 @@ void update_manual_switch_visuals(lv_obj_t* btn, bool is_on) {
     }
 }
 
-// --- CLICK EVENT ---
+// --- EVENTS ---
 void on_manual_switch_toggle(lv_event_t* e) {
     lv_obj_t* btn = (lv_obj_t*)lv_event_get_target(e);
     const char* entity_id = (const char*)lv_event_get_user_data(e);
@@ -93,13 +86,11 @@ void on_manual_switch_toggle(lv_event_t* e) {
     }
 }
 
-// --- FILTERING ---
 void apply_switch_filter() {
     if (!ui_haswC) return;
     uint32_t count = lv_obj_get_child_cnt(ui_haswC);
     for(uint32_t i=0; i<count; i++) {
         lv_obj_t* btn = lv_obj_get_child(ui_haswC, i);
-        // Room Label is Child index 2
         if (lv_obj_get_child_cnt(btn) < 3) continue; 
         
         lv_obj_t* room_lbl = lv_obj_get_child(btn, 2); 
@@ -115,7 +106,6 @@ void apply_switch_filter() {
     }
 }
 
-// --- ROOM CHIP EVENTS ---
 void on_room_click(lv_event_t* e) {
     lv_obj_t* clicked_chip = (lv_obj_t*)lv_event_get_target(e);
     if (!ui_rmC) return;
@@ -127,12 +117,14 @@ void on_room_click(lv_event_t* e) {
         
         if (chip == clicked_chip) {
             lv_obj_set_style_bg_color(chip, lv_color_hex(COLOR_BLUE_ACTIVE), LV_PART_MAIN);
+            lv_obj_set_style_bg_opa(chip, 255, LV_PART_MAIN);
             if(label) {
                 lv_obj_set_style_text_color(label, lv_color_hex(COLOR_TEXT_WHITE), LV_PART_MAIN);
                 current_room_filter = String(lv_label_get_text(label)); 
             }
         } else {
             lv_obj_set_style_bg_color(chip, lv_color_hex(COLOR_BG_BLACK), LV_PART_MAIN);
+            lv_obj_set_style_bg_opa(chip, 80, LV_PART_MAIN); 
             if(label) lv_obj_set_style_text_color(label, lv_color_hex(COLOR_TEXT_WHITE), LV_PART_MAIN);
         }
     }
@@ -145,7 +137,7 @@ void on_arrow_click(lv_event_t* e) {
     else lv_obj_scroll_by(ui_rmC, 100, 0, LV_ANIM_ON);
 }
 
-// --- MAIN BUILD FUNCTION ---
+// --- MAIN BUILD ---
 void refresh_ui_data(const char* json_payload) {
     Serial.print("UI: Build Start. Heap: "); Serial.println(ESP.getFreeHeap());
     if (!ui_haswC || !ui_rmC) return;
@@ -175,13 +167,11 @@ void refresh_ui_data(const char* json_payload) {
     if (buttons.isNull() || buttons.size() == 0) {
         lv_obj_clear_flag(ui_haswCnd, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(ui_haswC, LV_OBJ_FLAG_HIDDEN);
-        delete doc; 
-        return;
+        delete doc; return;
     } else {
         lv_obj_add_flag(ui_haswCnd, LV_OBJ_FLAG_HIDDEN);
         lv_obj_clear_flag(ui_haswC, LV_OBJ_FLAG_HIDDEN);
         
-        // --- LAYOUT CONFIGURATION ---
         lv_obj_set_flex_flow(ui_haswC, LV_FLEX_FLOW_ROW_WRAP);
         lv_obj_set_flex_align(ui_haswC, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
         lv_obj_set_style_pad_row(ui_haswC, 10, 0);
@@ -194,7 +184,7 @@ void refresh_ui_data(const char* json_payload) {
     strcpy(room_list[0], "My Home");
     int room_count = 1;
 
-    // --- MANUAL SWITCH CREATION ---
+    // --- SWITCHES ---
     Serial.println("UI: Creating Switches...");
     int idx = 0;
     for (JsonObject btn : buttons) {
@@ -206,17 +196,14 @@ void refresh_ui_data(const char* json_payload) {
         const char* room = btn["room"] | "Home"; 
         const char* state = btn["state"] | "OFF";
 
-        // A. Root Button (Card Style)
         lv_obj_t* sw_btn = lv_btn_create(ui_haswC);
         lv_obj_remove_style_all(sw_btn); 
         lv_obj_set_width(sw_btn, SW_WIDTH);
         lv_obj_set_height(sw_btn, SW_HEIGHT);
-        
-        // ** FIX HERE: Cast combined flags to lv_obj_flag_t **
+        // Cast flags to lv_obj_flag_t
         lv_obj_add_flag(sw_btn, (lv_obj_flag_t)(LV_OBJ_FLAG_CHECKABLE | LV_OBJ_FLAG_CLICKABLE));
         lv_obj_clear_flag(sw_btn, LV_OBJ_FLAG_SCROLLABLE);
         
-        // Base Style
         lv_obj_set_style_radius(sw_btn, 12, LV_PART_MAIN);
         lv_obj_set_style_bg_color(sw_btn, lv_color_hex(COLOR_BG_BLACK), LV_PART_MAIN);
         lv_obj_set_style_bg_opa(sw_btn, 80, LV_PART_MAIN); 
@@ -224,7 +211,7 @@ void refresh_ui_data(const char* json_payload) {
         char* entity_store = strdup(entity); 
         lv_obj_set_user_data(sw_btn, (void*)entity_store);
 
-        // B. Icon Container
+        // Icon Container
         lv_obj_t* icon_cont = lv_obj_create(sw_btn);
         lv_obj_remove_style_all(icon_cont);
         lv_obj_set_size(icon_cont, 50, 50);
@@ -233,12 +220,10 @@ void refresh_ui_data(const char* json_payload) {
         lv_obj_set_style_radius(icon_cont, 50, LV_PART_MAIN); 
         lv_obj_set_style_bg_color(icon_cont, lv_color_hex(COLOR_BG_BLACK), LV_PART_MAIN);
         lv_obj_set_style_bg_opa(icon_cont, 80, LV_PART_MAIN); 
-        
-        // DISABLE CHILD CLICK
         lv_obj_clear_flag(icon_cont, LV_OBJ_FLAG_CLICKABLE);
         lv_obj_clear_flag(icon_cont, LV_OBJ_FLAG_SCROLLABLE);
         
-        // C. Icon Image
+        // Icon
         lv_obj_t* img = lv_img_create(icon_cont);
         lv_img_set_src(img, get_icon_by_name(icon));
         lv_obj_center(img);
@@ -246,10 +231,9 @@ void refresh_ui_data(const char* json_payload) {
         lv_obj_set_style_border_width(img, 0, LV_PART_MAIN); 
         lv_obj_set_style_img_recolor(img, lv_color_hex(COLOR_INACTIVE_GREY), LV_PART_MAIN);
         lv_obj_set_style_img_recolor_opa(img, 255, LV_PART_MAIN);
-        // DISABLE CHILD CLICK
         lv_obj_clear_flag(img, LV_OBJ_FLAG_CLICKABLE);
 
-        // D. Name Label
+        // Name
         lv_obj_t* lbl_n = lv_label_create(sw_btn);
         lv_obj_set_width(lbl_n, 125);
         lv_obj_set_height(lbl_n, 20);
@@ -259,10 +243,9 @@ void refresh_ui_data(const char* json_payload) {
         lv_obj_set_style_text_color(lbl_n, lv_color_hex(COLOR_TEXT_WHITE), LV_PART_MAIN);
         lv_obj_set_style_text_align(lbl_n, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN);
         lv_obj_set_style_text_font(lbl_n, &lv_font_montserrat_16, LV_PART_MAIN);
-        // DISABLE CHILD CLICK
         lv_obj_clear_flag(lbl_n, LV_OBJ_FLAG_CLICKABLE);
 
-        // E. Room Label
+        // Room
         lv_obj_t* lbl_r = lv_label_create(sw_btn);
         lv_obj_set_width(lbl_r, 125);
         lv_obj_set_height(lbl_r, 16);
@@ -272,10 +255,8 @@ void refresh_ui_data(const char* json_payload) {
         lv_obj_set_style_text_color(lbl_r, lv_color_hex(COLOR_TEXT_WHITE), LV_PART_MAIN);
         lv_obj_set_style_text_align(lbl_r, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN);
         lv_obj_set_style_text_font(lbl_r, &lv_font_montserrat_12, LV_PART_MAIN);
-        // DISABLE CHILD CLICK
         lv_obj_clear_flag(lbl_r, LV_OBJ_FLAG_CLICKABLE);
 
-        // State Init
         bool is_on = (strcasecmp(state, "ON") == 0);
         if (is_on) lv_obj_add_state(sw_btn, LV_STATE_CHECKED);
         update_manual_switch_visuals(sw_btn, is_on);
@@ -295,7 +276,7 @@ void refresh_ui_data(const char* json_payload) {
         delay(5); 
     }
 
-    // 5. Manual Chips
+    // --- CHIPS ---
     Serial.println("UI: Creating Chips...");
     for (int i = 0; i < room_count; i++) {
         lv_obj_t* chip = lv_btn_create(ui_rmC);
@@ -307,19 +288,18 @@ void refresh_ui_data(const char* json_payload) {
         lv_obj_set_style_border_width(chip, 0, LV_PART_MAIN);
         lv_obj_set_style_shadow_width(chip, 0, LV_PART_MAIN);
         
-        // Ensure Parent Chip is Clickable
         lv_obj_add_flag(chip, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_clear_flag(chip, LV_OBJ_FLAG_SCROLL_ON_FOCUS); 
 
         lv_obj_t* lbl = lv_label_create(chip);
         lv_label_set_text(lbl, room_list[i]);
         lv_obj_center(lbl);
         lv_obj_set_style_text_font(lbl, &lv_font_montserrat_14, 0);
-        
-        // Disable Label Click
         lv_obj_clear_flag(lbl, LV_OBJ_FLAG_CLICKABLE);
 
         if (String(room_list[i]) == current_room_filter) {
             lv_obj_set_style_bg_color(chip, lv_color_hex(COLOR_BLUE_ACTIVE), LV_PART_MAIN);
+            lv_obj_set_style_bg_opa(chip, 255, LV_PART_MAIN);
             lv_obj_set_style_text_color(lbl, lv_color_hex(COLOR_TEXT_WHITE), 0);
         } else {
             lv_obj_set_style_bg_color(chip, lv_color_hex(COLOR_BG_BLACK), LV_PART_MAIN);
@@ -331,10 +311,16 @@ void refresh_ui_data(const char* json_payload) {
         delay(5);
     }
     
+    // --- ARROW LOGIC (Corrected) ---
     lv_obj_update_layout(ui_rmC);
-    if (ui_rmPe) {
-        if (lv_obj_get_scroll_right(ui_rmC) > 5) lv_obj_clear_flag(ui_rmPe, LV_OBJ_FLAG_HIDDEN);
-        else lv_obj_add_flag(ui_rmPe, LV_OBJ_FLAG_HIDDEN);
+    // Reset to start to measure correctly
+    lv_obj_scroll_to_x(ui_rmC, 0, LV_ANIM_OFF);
+    
+    // Check if there is scrollable content to the right
+    if (lv_obj_get_scroll_right(ui_rmC) > 0) {
+        lv_obj_clear_flag(ui_rmPe, LV_OBJ_FLAG_HIDDEN);
+    } else {
+        lv_obj_add_flag(ui_rmPe, LV_OBJ_FLAG_HIDDEN);
     }
 
     Serial.println("UI: Build Complete.");
