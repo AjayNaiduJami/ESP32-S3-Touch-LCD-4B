@@ -59,6 +59,9 @@ struct SystemLocation {
     bool has_saved_data;
 };
 
+String pending_json_config = "";
+bool config_update_pending = false;
+
 /* ================= GLOBALS ================= */
 
 uint32_t last_wifi_check = 0;
@@ -938,12 +941,19 @@ void mqtt_callback(char* topic, byte* payload, unsigned int len) {
     p_buff[len] = '\0';
 
     // 1. HANDLE CONFIGURATION UPDATE
+    // if (strcmp(topic, "ha/panel/config/set") == 0) {
+    //     show_loader("Updating Layout...");
+    //     // Replaced custom parsing with ui_logic.h handler
+    //     refresh_ui_data(p_buff); 
+    //     Serial.println("UI Config Updated via ui_logic");
+    //     hide_loader();
+    // }
+
     if (strcmp(topic, "ha/panel/config/set") == 0) {
-        show_loader("Updating Layout...");
-        // Replaced custom parsing with ui_logic.h handler
-        refresh_ui_data(p_buff); 
-        Serial.println("UI Config Updated via ui_logic");
-        hide_loader();
+        Serial.println("Config received. Scheduling update...");
+        // DECOUPLED: Save string and set flag. Do NOT call refresh_ui_data here.
+        pending_json_config = String(p_buff); 
+        config_update_pending = true;         
     }
 
     // 2. HANDLE STATE UPDATES FROM HA
@@ -3450,6 +3460,14 @@ void update_power_screen_ui() {
 void loop() {
     lv_timer_handler();
     delay(5);
+
+    // --- NEW: Handle UI Updates safely in main loop ---
+    if (config_update_pending) {
+        // Now it's safe to allocate memory and build UI
+        refresh_ui_data(pending_json_config.c_str());
+        pending_json_config = ""; // Clear memory
+        config_update_pending = false;
+    }
 
     // 1. Weather/Time Sync Trigger
     if (trigger_weather_update) {
