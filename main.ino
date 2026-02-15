@@ -3130,6 +3130,16 @@ void update_status_icons() {
             lv_label_set_text(ui_batt, LV_SYMBOL_USB);
         }
     }
+
+    // --- NEW: Update Bell Icon Color ---
+    int count = get_notification_count();
+    if (ui_bell) {
+        if (count > 0) {
+            lv_obj_set_style_text_color(ui_bell, lv_palette_main(LV_PALETTE_ORANGE), 0);
+        } else {
+            lv_obj_set_style_text_color(ui_bell, lv_color_white(), 0);
+        }
+    }
 }
 
 void handle_display_state() {
