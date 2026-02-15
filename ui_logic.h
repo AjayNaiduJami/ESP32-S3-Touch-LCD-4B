@@ -140,7 +140,7 @@ void on_arrow_click(lv_event_t* e) {
         lv_coord_t max_x = lv_obj_get_scroll_x(ui_rmC) + lv_obj_get_scroll_right(ui_rmC);
         lv_obj_scroll_to_x(ui_rmC, max_x, LV_ANIM_ON);
         
-        // Flip Arrow (180 deg) to indicate "Back"
+        // Flip Arrow (180 deg) around CENTER pivot
         lv_obj_set_style_transform_angle(ui_rmPe, 1800, 0); 
     } else {
         // SCROLL TO START (Go Back)
@@ -193,7 +193,7 @@ void refresh_ui_data(const char* json_payload) {
         lv_obj_set_style_pad_column(ui_haswC, 10, 0);
         lv_obj_set_style_pad_all(ui_haswC, 0, 0);
         
-        // ** FIX 1: Room List Spacing **
+        // Room List Spacing
         lv_obj_set_style_pad_column(ui_rmC, 10, 0); 
     }
 
@@ -328,15 +328,15 @@ void refresh_ui_data(const char* json_payload) {
         delay(5);
     }
     
-    // --- ARROW LOGIC & BORDER FIX ---
-    // ** FIX 2: Remove Arrow Border **
+    // --- ARROW LOGIC ---
+    // Fix: Remove Border from Arrow
     if(ui_rmPe) lv_obj_set_style_border_width(ui_rmPe, 0, LV_PART_MAIN); 
-    if(ui_rmPe) lv_obj_set_style_transform_angle(ui_rmPe, 0, 0); // Reset Rotation
+    if(ui_rmPe) lv_obj_set_style_transform_angle(ui_rmPe, 0, 0); 
 
     lv_obj_update_layout(ui_rmC);
     lv_obj_scroll_to_x(ui_rmC, 0, LV_ANIM_OFF);
     
-    // ** FIX 3: Arrow Visibility logic: Visible if overflow exists **
+    // Visibility
     if (lv_obj_get_scroll_right(ui_rmC) > 0) {
         lv_obj_clear_flag(ui_rmPe, LV_OBJ_FLAG_HIDDEN);
     } else {
@@ -345,6 +345,16 @@ void refresh_ui_data(const char* json_payload) {
 
     Serial.println("UI: Build Complete.");
     delete doc; 
+}
+
+// --- INIT HELPER TO SET PIVOT ---
+void setup_ui_logic() {
+    if(ui_rmPe) {
+        lv_obj_add_event_cb(ui_rmPe, on_arrow_click, LV_EVENT_CLICKED, NULL);
+        // ** FIX: Set Rotation Pivot to Center (50% of width/height) **
+        lv_obj_set_style_transform_pivot_x(ui_rmPe, LV_PCT(50), 0);
+        lv_obj_set_style_transform_pivot_y(ui_rmPe, LV_PCT(50), 0);
+    }
 }
 
 // --- UPDATE FROM MQTT ---
@@ -361,10 +371,6 @@ void update_device_state(const char* entity_id, bool is_on) {
             return; 
         }
     }
-}
-
-void setup_ui_logic() {
-    if(ui_rmPe) lv_obj_add_event_cb(ui_rmPe, on_arrow_click, LV_EVENT_CLICKED, NULL);
 }
 
 #endif
